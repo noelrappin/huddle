@@ -14,7 +14,7 @@ class StatusReportsController < ApplicationController
   # GET /status_reports/1.xml
   def show
     @status_report = StatusReport.find(params[:id])
-
+    @status_report.status_date = Date.today
     respond_to do |format|
       format.html # show.html.erb
       format.xml  { render :xml => @status_report }

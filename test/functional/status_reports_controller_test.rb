@@ -43,4 +43,19 @@ class StatusReportsControllerTest < ActionController::TestCase
     assert_redirected_to status_reports_path
   end
 
+  test "creation of status report with data" do
+    assert_difference('StatusReport.count', 1) do
+      post :create, :status_report => {
+        :project_id => projects(:one).id, 
+        :user_id => users(:quentin).id,
+        :yesterday => "I did stuff",
+        :today => "I'll do stuff"}
+    end
+    actual = assigns(:status_report)
+    assert_equal(projects(:one).id, actual.project.id)
+    assert_equal(users(:quentin).id, actual.user.id)
+    assert_equal(Date.today.to_s(:db), actual.status_date.to_s(:db))
+    assert_redirected_to status_report_path(actual)
+  end
+
 end
