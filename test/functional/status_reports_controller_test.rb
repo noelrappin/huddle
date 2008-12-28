@@ -14,7 +14,7 @@ class StatusReportsControllerTest < ActionController::TestCase
 
   test "should create status_report" do
     assert_difference('StatusReport.count') do
-      post :create, :status_report => { }
+      post :create, :status_report => {:today => "t", :yesterday => "y"}
     end
 
     assert_redirected_to status_report_path(assigns(:status_report))
