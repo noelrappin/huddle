@@ -1,0 +1,28 @@
+<h1>Listing status_reports</h1>
+
+<table>
+  <tr>
+    <th>Project</th>
+    <th>User</th>
+    <th>Yesterday</th>
+    <th>Today</th>
+    <th>Status date</th>
+  </tr>
+
+<% for status_report in @status_reports %>
+  <tr>
+    <td><%=h status_report.project %></td>
+    <td><%=h status_report.user %></td>
+    <td><%=h status_report.yesterday %></td>
+    <td><%=h status_report.today %></td>
+    <td><%=h status_report.status_date %></td>
+    <td><%= link_to 'Show', status_report %></td>
+    <td><%= link_to 'Edit', edit_status_report_path(status_report) %></td>
+    <td><%= link_to 'Destroy', status_report, :confirm => 'Are you sure?', :method => :delete %></td>
+  </tr>
+<% end %>
+</table>
+
+<br />
+
+<%= link_to 'New status_report', new_status_report_path %>

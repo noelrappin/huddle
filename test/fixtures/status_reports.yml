@@ -1,0 +1,15 @@
+# Read about fixtures at http://ar.rubyonrails.org/classes/Fixtures.html
+
+one:
+  project: 
+  user: 
+  yesterday: MyText
+  today: MyText
+  status_date: 2008-12-28
+
+two:
+  project: 
+  user: 
+  yesterday: MyText
+  today: MyText
+  status_date: 2008-12-28

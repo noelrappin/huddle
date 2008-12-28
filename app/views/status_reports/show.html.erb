@@ -1,0 +1,28 @@
+<p>
+  <b>Project:</b>
+  <%=h @status_report.project %>
+</p>
+
+<p>
+  <b>User:</b>
+  <%=h @status_report.user %>
+</p>
+
+<p>
+  <b>Yesterday:</b>
+  <%=h @status_report.yesterday %>
+</p>
+
+<p>
+  <b>Today:</b>
+  <%=h @status_report.today %>
+</p>
+
+<p>
+  <b>Status date:</b>
+  <%=h @status_report.status_date %>
+</p>
+
+
+<%= link_to 'Edit', edit_status_report_path(@status_report) %> |
+<%= link_to 'Back', status_reports_path %>
