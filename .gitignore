@@ -1,0 +1,5 @@
+log/*
+doc/*
+tmp/*
+.DS_Store
+.rake_tasks~
