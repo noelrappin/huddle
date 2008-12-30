@@ -1,6 +1,8 @@
 require 'test_helper'
 
 class ProjectsControllerTest < ActionController::TestCase
+  setup :login_quentin
+  
   test "should get index" do
     get :index
     assert_response :success

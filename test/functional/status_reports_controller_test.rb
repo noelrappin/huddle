@@ -1,6 +1,8 @@
 require 'test_helper'
 
 class StatusReportsControllerTest < ActionController::TestCase
+  setup :login_quentin
+  
   test "should get index" do
     get :index
     assert_response :success
@@ -57,5 +59,18 @@ class StatusReportsControllerTest < ActionController::TestCase
     assert_equal(Date.today.to_s(:db), actual.status_date.to_s(:db))
     assert_redirected_to status_report_path(actual)
   end
+  
+  # test "creation of status report with an implicit user and project" do
+  #   login_as :quentin
+  #   @request.session[:project_id] = projects(:one).id
+  #   assert_difference('StatusReport.count', 1) do
+  #     post :create, :status_report => {
+  #       :yesterday => "I did stuff",
+  #       :today => "I'll do stuff"}
+  #   end
+  #   actual = assigns(:status_report)
+  #   assert_equal(users(:quentin).id, actual.user.id)
+  #   assert_equal(projects(:one).id, actual.project.id)
+  # end
 
 end

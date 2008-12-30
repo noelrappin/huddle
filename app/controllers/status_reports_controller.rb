@@ -40,6 +40,8 @@ class StatusReportsController < ApplicationController
   # POST /status_reports.xml
   def create
     @status_report = StatusReport.new(params[:status_report])
+    @status_report.user = current_user if current_user
+    @status_report.project = current_project if current_project
     respond_to do |format|
       if @status_report.save
         flash[:notice] = 'StatusReport was successfully created.'
