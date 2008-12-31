@@ -18,6 +18,6 @@ class ApplicationController < ActionController::Base
   private
   helper_method :current_project
   def current_project
-    project = Project.find(session[:project_id]) rescue nil
+    project = Project.find(session[:project_id]) rescue Project.last
   end
 end

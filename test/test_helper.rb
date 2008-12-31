@@ -1,6 +1,7 @@
 ENV["RAILS_ENV"] = "test"
 require File.expand_path(File.dirname(__FILE__) + "/../config/environment")
 require 'test_help'
+require 'pp'
 
 class ActiveSupport::TestCase
   include AuthenticatedTestHelper
@@ -41,4 +42,9 @@ class ActiveSupport::TestCase
   fixtures :all
 
   # Add more helper methods to be used by all tests here...
+  
+  def set_current_project(symbol)
+    @request.session[:project_id] = projects(symbol).id
+    p
+  end
 end
