@@ -1,8 +1,13 @@
-<p>
-  <b>Name:</b>
-  <%=h @project.name %>
-</p>
+<h2>Status Reports for <%= @project.name %></h2>
 
-
-<%= link_to 'Edit', edit_project_path(@project) %> |
-<%= link_to 'Back', projects_path %>
+<% @reports.keys.sort.each do |date| %>
+  <div id="<%= date.to_s(:db) %>_day">
+    <h3>Reports for <%= date.to_s(:long) %></h3>
+    <% @reports[date].each do |report| %>
+      <div id="<%= dom_id(report) %>">
+        Yesterday I: <%= h report.yesterday %>
+        Today I will: <%= h report.today %>
+      </div>
+    <% end %>
+  </div>
+<% end %>

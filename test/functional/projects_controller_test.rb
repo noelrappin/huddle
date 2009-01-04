@@ -55,20 +55,20 @@ class ProjectsControllerTest < ActionController::TestCase
   end
   
   
-  # test "index should display project timeline" do
-  #   set_current_project(:huddle)
-  #   get :show, :id => projects(:huddle).id
-  #   assert_select "div[id *= day]", :count => 2
-  #   assert_select "div#2009_01_06_day" do
-  #     assert_select "div[id *= report]", :count => 2
-  #     assert_select "div#?", dom_id(status_reports(:quentin_tue))
-  #     assert_select "div#?", dom_id(status_reports(:aaron_tue))
-  #   end
-  #   assert_select "div#2009_01_07_day" do
-  #     assert_select "div[id *= report]", :count => 2
-  #     assert_select "div#?", dom_id(status_reports(:quentin_wed))
-  #     assert_select "div#?", dom_id(status_reports(:aaron_wed))
-  #   end
-  # end
+  test "index should display project timeline" do
+    set_current_project(:huddle)
+    get :show, :id => projects(:huddle).id
+    assert_select "div[id *= day]", :count => 2
+    assert_select "div#2009-01-06_day" do
+      assert_select "div[id *= report]", :count => 2
+      assert_select "div#?", dom_id(status_reports(:quentin_tue))
+      assert_select "div#?", dom_id(status_reports(:aaron_tue))
+    end
+    assert_select "div#2009-01-07_day" do
+      assert_select "div[id *= report]", :count => 2
+      assert_select "div#?", dom_id(status_reports(:quentin_wed))
+      assert_select "div#?", dom_id(status_reports(:aaron_wed))
+    end
+  end
   
 end

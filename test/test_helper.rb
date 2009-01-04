@@ -5,6 +5,7 @@ require 'pp'
 
 class ActiveSupport::TestCase
   include AuthenticatedTestHelper
+  include ActionView::Helpers::RecordIdentificationHelper
   
   def login_quentin
     login_as :quentin
