@@ -4,6 +4,9 @@ class StatusReport < ActiveRecord::Base
   
   before_save :set_status_date
   validate :validate_has_at_least_one_status
+  
+  named_scope :by_user_name, :include => "user", :order => "users.email ASC",
+      :conditions => "user_id NOT NULL"
 
   def validate_has_at_least_one_status
     if today.blank? and yesterday.blank?

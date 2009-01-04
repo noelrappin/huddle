@@ -29,4 +29,12 @@ class StatusReportTest < ActiveSupport::TestCase
     assert actual.valid?
   end
   
+  test "by user name should sort as expected" do
+    reports = StatusReport.by_user_name
+    expected = reports.map { |r| r.user.email }
+    assert_equal ["aaron@example.com", "aaron@example.com", 
+          "quentin@example.com", "quentin@example.com"], expected
+  end
+  
+  
 end

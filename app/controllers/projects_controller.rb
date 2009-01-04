@@ -14,7 +14,7 @@ class ProjectsController < ApplicationController
   # GET /projects/1.xml
   def show
     @project = Project.find(params[:id])
-
+    @reports = @project.reports_grouped_by_day
     respond_to do |format|
       format.html # show.html.erb
       format.xml  { render :xml => @project }

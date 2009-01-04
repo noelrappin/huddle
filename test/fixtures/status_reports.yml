@@ -7,9 +7,30 @@ one:
   today: MyText
   status_date: 2008-12-28
 
-two:
-  project: 
-  user: 
-  yesterday: MyText
-  today: MyText
-  status_date: 2008-12-28
+quentin_tue:
+  project: huddle
+  user: quentin
+  yesterday: Worked on Huddle UI
+  today: Doing some testing
+  status_date: 2009-01-06
+
+quentin_wed:
+  project: huddle
+  user: quentin
+  yesterday: Did Some Testing
+  today: More Testing
+  status_date: 2009-01-07
+
+aaron_tue:
+  project: huddle
+  user: aaron
+  yesterday: set up huddle schema
+  today: pair programming with quentin
+  status_date: 2009-01-06
+  
+aaron_wed:
+  project: huddle
+  user: aaron
+  yesterday: sick
+  today: trying to pair again
+  status_date: 2009-01-07
