@@ -1,5 +1,4 @@
 <h2>Status Reports for <%= @project.name %></h2>
-
 <% @reports.keys.sort.each do |date| %>
   <div id="<%= date.to_s(:db) %>_day">
     <h3>Reports for <%= date.to_s(:long) %></h3>
