@@ -46,6 +46,5 @@ class ActiveSupport::TestCase
   
   def set_current_project(symbol)
     @request.session[:project_id] = projects(symbol).id
-    p
   end
 end

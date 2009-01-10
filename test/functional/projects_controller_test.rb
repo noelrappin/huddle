@@ -50,12 +50,13 @@ class ProjectsControllerTest < ActionController::TestCase
     get :show, :id => projects(:huddle).id
     expected_keys = assigns(:reports).keys.sort.map{ |d| d.to_s(:db) }
     assert_equal(["2009-01-06", "2009-01-07"], expected_keys)
-    assert_equal([status_reports(:aaron_tue).id, status_reports(:quentin_tue).id],
+    assert_equal(
+        [status_reports(:aaron_tue).id, status_reports(:quentin_tue).id],
         assigns(:reports)[Date.parse("2009-01-06")].map(&:id))
   end
   
   
-  test "index should display project timeline" do
+  test "show should display project timeline" do
     set_current_project(:huddle)
     get :show, :id => projects(:huddle).id
     assert_select "div[id *= day]", :count => 2
