@@ -1,73 +1,139 @@
 require 'abstract_unit'
 
-class HttpDigestAuthenticationTest < Test::Unit::TestCase
-  include ActionController::HttpAuthentication::Digest
-  
-  class DummyController
-    attr_accessor :headers, :renders, :request, :response
+class HttpDigestAuthenticationTest < ActionController::TestCase
+  class DummyDigestController < ActionController::Base
+    before_filter :authenticate, :only => :index
+    before_filter :authenticate_with_request, :only => :display
 
-    def initialize
-      @headers, @renders = {}, []
-      @request = ActionController::TestRequest.new
-      @response = ActionController::TestResponse.new
-      request.session.session_id = "test_session"
+    USERS = { 'lifo' => 'world', 'pretty' => 'please' }
+
+    def index
+      render :text => "Hello Secret"
     end
-    
-    def render(options)
-      self.renderers << options
+
+    def display
+      render :text => 'Definitely Maybe'
     end
-  end
-  
-  def setup
-    @controller = DummyController.new
-    @credentials = {
-      :username => "dhh",
-      :realm    => "testrealm@host.com",
-      :nonce    => ActionController::HttpAuthentication::Digest.nonce(@controller.request),
-      :qop      => "auth",
-      :nc       => "00000001",
-      :cnonce   => "0a4f113b",
-      :opaque   => ActionController::HttpAuthentication::Digest.opaque(@controller.request),
-      :uri      => "http://test.host/"
-    }
-    @encoded_credentials = ActionController::HttpAuthentication::Digest.encode_credentials("GET", @credentials, "secret")
+
+    private
+
+    def authenticate
+      authenticate_or_request_with_http_digest("SuperSecret") do |username|
+        # Return the password
+        USERS[username]
+      end
+    end
+
+    def authenticate_with_request
+      if authenticate_with_http_digest("SuperSecret")  { |username| USERS[username] }
+        @logged_in = true
+      else
+        request_http_digest_authentication("SuperSecret", "Authentication Failed")
+      end
+    end
   end
 
-  def test_decode_credentials
-    set_headers
-    assert_equal @credentials, decode_credentials(@controller.request) 
-  end 
-    
-  def test_nonce_format
-    assert_nothing_thrown do
-      validate_nonce(@controller.request, nonce(@controller.request))
+  AUTH_HEADERS = ['HTTP_AUTHORIZATION', 'X-HTTP_AUTHORIZATION', 'X_HTTP_AUTHORIZATION', 'REDIRECT_X_HTTP_AUTHORIZATION']
+
+  tests DummyDigestController
+
+  AUTH_HEADERS.each do |header|
+    test "successful authentication with #{header.downcase}" do
+      @request.env[header] = encode_credentials(:username => 'lifo', :password => 'world')
+      get :index
+
+      assert_response :success
+      assert_equal 'Hello Secret', @response.body, "Authentication failed for request header #{header}"
     end
   end
-  
-  def test_authenticate_should_raise_for_nil_password
-    set_headers ActionController::HttpAuthentication::Digest.encode_credentials(:get, @credentials, nil)
-    assert_raise ActionController::HttpAuthentication::Error do
-      authenticate(@controller, @credentials[:realm]) { |user| user == "dhh" && "secret" }
+
+  AUTH_HEADERS.each do |header|
+    test "unsuccessful authentication with #{header.downcase}" do
+      @request.env[header] = encode_credentials(:username => 'h4x0r', :password => 'world')
+      get :index
+
+      assert_response :unauthorized
+      assert_equal "HTTP Digest: Access denied.\n", @response.body, "Authentication didn't fail for request header #{header}"
     end
-  end 
-  
-  def test_authenticate_should_raise_for_incorrect_password 
-    set_headers
-    assert_raise ActionController::HttpAuthentication::Error do
-      authenticate(@controller, @credentials[:realm]) { |user| user == "dhh" && "bad password" }
-    end
-  end 
- 
-  def test_authenticate_should_not_raise_for_correct_password 
-    set_headers
-    assert_nothing_thrown do
-      authenticate(@controller, @credentials[:realm]) { |user| user == "dhh" && "secret" }
-    end
-  end 
+  end
+
+  test "authentication request without credential" do
+    get :display
+
+    assert_response :unauthorized
+    assert_equal "Authentication Failed", @response.body
+    credentials = decode_credentials(@response.headers['WWW-Authenticate'])
+    assert_equal 'SuperSecret', credentials[:realm]
+  end
+
+  test "authentication request with invalid password" do
+    @request.env['HTTP_AUTHORIZATION'] = encode_credentials(:username => 'pretty', :password => 'foo')
+    get :display
+
+    assert_response :unauthorized
+    assert_equal "Authentication Failed", @response.body
+  end
+
+  test "authentication request with invalid nonce" do
+    @request.env['HTTP_AUTHORIZATION'] = encode_credentials(:username => 'pretty', :password => 'please', :nonce => "xxyyzz")
+    get :display
+
+    assert_response :unauthorized
+    assert_equal "Authentication Failed", @response.body
+  end
+
+  test "authentication request with invalid opaque" do
+    @request.env['HTTP_AUTHORIZATION'] = encode_credentials(:username => 'pretty', :password => 'foo', :opaque => "xxyyzz")
+    get :display
+
+    assert_response :unauthorized
+    assert_equal "Authentication Failed", @response.body
+  end
+
+  test "authentication request with invalid realm" do
+    @request.env['HTTP_AUTHORIZATION'] = encode_credentials(:username => 'pretty', :password => 'foo', :realm => "NotSecret")
+    get :display
+
+    assert_response :unauthorized
+    assert_equal "Authentication Failed", @response.body
+  end
+
+  test "authentication request with valid credential" do
+    @request.env['HTTP_AUTHORIZATION'] = encode_credentials(:username => 'pretty', :password => 'please')
+    get :display
+
+    assert_response :success
+    assert assigns(:logged_in)
+    assert_equal 'Definitely Maybe', @response.body
+  end
+
+   test "authentication request with relative URI" do
+    @request.env['HTTP_AUTHORIZATION'] = encode_credentials(:uri => "/", :username => 'pretty', :password => 'please')
+    get :display
+
+    assert_response :success
+    assert assigns(:logged_in)
+    assert_equal 'Definitely Maybe', @response.body
+  end
 
   private
-    def set_headers(value = @encoded_credentials, name = 'HTTP_AUTHORIZATION', method = "GET")
-      @controller.request.env[name] = value
-      @controller.request.env["REQUEST_METHOD"] = method
-    end
+
+  def encode_credentials(options)
+    options.reverse_merge!(:nc => "00000001", :cnonce => "0a4f113b")
+    password = options.delete(:password)
+
+    # Perform unautheticated get to retrieve digest parameters to use on subsequent request
+    get :index
+
+    assert_response :unauthorized
+
+    credentials = decode_credentials(@response.headers['WWW-Authenticate'])
+    credentials.merge!(options)
+    credentials.reverse_merge!(:uri => "http://#{@request.host}#{@request.env['REQUEST_URI']}")
+    ActionController::HttpAuthentication::Digest.encode_credentials("GET", credentials, password)
+  end
+
+  def decode_credentials(header)
+    ActionController::HttpAuthentication::Digest.decode_credentials(@response.headers['WWW-Authenticate'])
+  end
 end
