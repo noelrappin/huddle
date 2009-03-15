@@ -142,6 +142,15 @@ class NamedScopeTest < ActiveRecord::TestCase
     assert_equal authors(:david).comments & Comment.containing_the_letter_e, authors(:david).comments.containing_the_letter_e
   end
 
+  def test_named_scopes_honor_current_scopes_from_when_defined
+    assert !Post.ranked_by_comments.limit(5).empty?
+    assert !authors(:david).posts.ranked_by_comments.limit(5).empty?
+    assert_not_equal Post.ranked_by_comments.limit(5), authors(:david).posts.ranked_by_comments.limit(5)
+    assert_not_equal Post.top(5), authors(:david).posts.top(5)
+    assert_equal authors(:david).posts.ranked_by_comments.limit(5), authors(:david).posts.top(5)
+    assert_equal Post.ranked_by_comments.limit(5), Post.top(5)
+  end
+
   def test_active_records_have_scope_named__all__
     assert !Topic.find(:all).empty?
 
@@ -254,7 +263,7 @@ class NamedScopeTest < ActiveRecord::TestCase
   end
 
   def test_should_use_where_in_query_for_named_scope
-    assert_equal Developer.find_all_by_name('Jamis'), Developer.find_all_by_id(Developer.jamises)
+    assert_equal Developer.find_all_by_name('Jamis').to_set, Developer.find_all_by_id(Developer.jamises).to_set
   end
 
   def test_size_should_use_count_when_results_are_not_loaded
@@ -276,6 +285,26 @@ class NamedScopeTest < ActiveRecord::TestCase
     join = "INNER JOIN comments ON comments.post_id = posts.id"
     post = Post.find(1)
     assert_equal post.comments.size, Post.scoped(:joins => join).scoped(:joins => join, :conditions => "posts.id = #{post.id}").size
+  end
+
+  def test_chanining_should_use_latest_conditions_when_creating
+    post1 = Topic.rejected.approved.new
+    assert post1.approved?
+
+    post2 = Topic.approved.rejected.new
+    assert ! post2.approved?
+  end
+
+  def test_chanining_should_use_latest_conditions_when_searching
+    # Normal hash conditions
+    assert_equal Topic.all(:conditions => {:approved => true}), Topic.rejected.approved.all
+    assert_equal Topic.all(:conditions => {:approved => false}), Topic.approved.rejected.all
+
+    # Nested hash conditions with same keys
+    assert_equal [posts(:sti_comments)], Post.with_special_comments.with_very_special_comments.all
+
+    # Nested hash conditions with different keys
+    assert_equal [posts(:sti_comments)], Post.with_special_comments.with_post(4).all.uniq
   end
 end
 

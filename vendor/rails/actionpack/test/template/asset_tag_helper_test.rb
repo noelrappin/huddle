@@ -38,8 +38,6 @@ class AssetTagHelperTest < ActionView::TestCase
     @controller.request = @request
 
     ActionView::Helpers::AssetTagHelper::reset_javascript_include_default
-    AssetTag::Cache.clear
-    AssetCollection::Cache.clear
   end
 
   def teardown
@@ -230,20 +228,18 @@ class AssetTagHelperTest < ActionView::TestCase
     ImageLinkToTag.each { |method, tag| assert_dom_equal(tag, eval(method)) }
   end
 
-  uses_mocha 'test image tag with windows behaviour' do
-    def test_image_tag_windows_behaviour
-      old_asset_id, ENV["RAILS_ASSET_ID"] = ENV["RAILS_ASSET_ID"], "1"
-      # This simulates the behaviour of File#exist? on windows when testing a file ending in "."
-      # If the file "rails.png" exists, windows will return true when asked if "rails.png." exists (notice trailing ".")
-      # OS X, linux etc will return false in this case.
-      File.stubs(:exist?).with('template/../fixtures/public/images/rails.png.').returns(true)
-      assert_equal '<img alt="Rails" src="/images/rails.png?1" />', image_tag('rails.png')
-    ensure
-      if old_asset_id
-        ENV["RAILS_ASSET_ID"] = old_asset_id
-      else
-        ENV.delete("RAILS_ASSET_ID")
-      end
+  def test_image_tag_windows_behaviour
+    old_asset_id, ENV["RAILS_ASSET_ID"] = ENV["RAILS_ASSET_ID"], "1"
+    # This simulates the behaviour of File#exist? on windows when testing a file ending in "."
+    # If the file "rails.png" exists, windows will return true when asked if "rails.png." exists (notice trailing ".")
+    # OS X, linux etc will return false in this case.
+    File.stubs(:exist?).with('template/../fixtures/public/images/rails.png.').returns(true)
+    assert_equal '<img alt="Rails" src="/images/rails.png?1" />', image_tag('rails.png')
+  ensure
+    if old_asset_id
+      ENV["RAILS_ASSET_ID"] = old_asset_id
+    else
+      ENV.delete("RAILS_ASSET_ID")
     end
   end
 
@@ -279,6 +275,26 @@ class AssetTagHelperTest < ActionView::TestCase
     copy = source.dup
     image_tag(source)
     assert_equal copy, source
+  end
+
+  def test_caching_image_path_with_caching_and_proc_asset_host_using_request
+    ENV['RAILS_ASSET_ID'] = ''
+    ActionController::Base.asset_host = Proc.new do |source, request|
+      if request.ssl?
+        "#{request.protocol}#{request.host_with_port}"
+      else
+        "#{request.protocol}assets#{source.length}.example.com"
+      end
+    end
+    
+    ActionController::Base.perform_caching = true
+
+
+    @controller.request.stubs(:ssl?).returns(false)
+    assert_equal "http://assets15.example.com/images/xml.png", image_path("xml.png")
+
+    @controller.request.stubs(:ssl?).returns(true)
+    assert_equal "http://localhost/images/xml.png", image_path("xml.png")
   end
 
   def test_caching_javascript_include_tag_when_caching_on

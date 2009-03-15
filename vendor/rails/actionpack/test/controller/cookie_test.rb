@@ -1,6 +1,6 @@
 require 'abstract_unit'
 
-class CookieTest < Test::Unit::TestCase
+class CookieTest < ActionController::TestCase
   class TestController < ActionController::Base
     def authenticate
       cookies["user_name"] = "david"
@@ -33,7 +33,7 @@ class CookieTest < Test::Unit::TestCase
     end
 
     def authenticate_with_http_only
-      cookies["user_name"] = { :value => "david", :http_only => true }
+      cookies["user_name"] = { :value => "david", :httponly => true }
     end
 
     def rescue_action(e)
@@ -41,11 +41,9 @@ class CookieTest < Test::Unit::TestCase
     end
   end
 
-  def setup
-    @request  = ActionController::TestRequest.new
-    @response = ActionController::TestResponse.new
+  tests TestController
 
-    @controller = TestController.new
+  def setup
     @request.host = "www.nextangle.com"
   end
 

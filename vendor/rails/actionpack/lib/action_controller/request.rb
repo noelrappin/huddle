@@ -6,24 +6,11 @@ require 'active_support/memoizable'
 require 'action_controller/cgi_ext'
 
 module ActionController
-  # CgiRequest and TestRequest provide concrete implementations.
-  class Request
-    extend ActiveSupport::Memoizable
+  class Request < Rack::Request
 
-    class SessionFixationAttempt < StandardError #:nodoc:
-    end
-
-    # The hash of environment variables for this request,
-    # such as { 'RAILS_ENV' => 'production' }.
-    attr_reader :env
-
-    def initialize(env)
-      @env = env
-    end
-
-    %w[ AUTH_TYPE GATEWAY_INTERFACE PATH_INFO
+    %w[ AUTH_TYPE GATEWAY_INTERFACE
         PATH_TRANSLATED REMOTE_HOST
-        REMOTE_IDENT REMOTE_USER SCRIPT_NAME
+        REMOTE_IDENT REMOTE_USER REMOTE_ADDR
         SERVER_NAME SERVER_PROTOCOL
 
         HTTP_ACCEPT HTTP_ACCEPT_CHARSET HTTP_ACCEPT_ENCODING
@@ -41,17 +28,17 @@ module ActionController
     HTTP_METHODS = %w(get head put post delete options)
     HTTP_METHOD_LOOKUP = HTTP_METHODS.inject({}) { |h, m| h[m] = h[m.upcase] = m.to_sym; h }
 
-    # The true HTTP request \method as a lowercase symbol, such as <tt>:get</tt>.
-    # UnknownHttpMethod is raised for invalid methods not listed in ACCEPTED_HTTP_METHODS.
+    # Returns the true HTTP request \method as a lowercase symbol, such as
+    # <tt>:get</tt>. If the request \method is not listed in the HTTP_METHODS
+    # constant above, an UnknownHttpMethod exception is raised.
     def request_method
-      method = @env['REQUEST_METHOD']
-      HTTP_METHOD_LOOKUP[method] || raise(UnknownHttpMethod, "#{method}, accepted HTTP methods are #{HTTP_METHODS.to_sentence}")
+      @request_method ||= HTTP_METHOD_LOOKUP[super] || raise(UnknownHttpMethod, "#{super}, accepted HTTP methods are #{HTTP_METHODS.to_sentence(:locale => :en)}")
     end
-    memoize :request_method
 
-    # The HTTP request \method as a lowercase symbol, such as <tt>:get</tt>.
-    # Note, HEAD is returned as <tt>:get</tt> since the two are functionally
-    # equivalent from the application's perspective.
+    # Returns the HTTP request \method used for action processing as a
+    # lowercase symbol, such as <tt>:post</tt>. (Unlike #request_method, this
+    # method returns <tt>:get</tt> for a HEAD request because the two are
+    # functionally equivalent from the application's perspective.)
     def method
       request_method == :head ? :get : request_method
     end
@@ -86,43 +73,46 @@ module ActionController
     #
     #   request.headers["Content-Type"] # => "text/plain"
     def headers
-      ActionController::Http::Headers.new(@env)
+      @headers ||= ActionController::Http::Headers.new(@env)
     end
-    memoize :headers
 
     # Returns the content length of the request as an integer.
     def content_length
-      @env['CONTENT_LENGTH'].to_i
+      super.to_i
     end
-    memoize :content_length
 
     # The MIME type of the HTTP request, such as Mime::XML.
     #
     # For backward compatibility, the post \format is extracted from the
     # X-Post-Data-Format HTTP header if present.
     def content_type
-      Mime::Type.lookup(parser.content_type_without_parameters)
+      @content_type ||= begin
+        if @env['CONTENT_TYPE'] =~ /^([^,\;]*)/
+          Mime::Type.lookup($1.strip.downcase)
+        else
+          nil
+        end
+      end
     end
-    memoize :content_type
 
     # Returns the accepted MIME type for the request.
     def accepts
-      header = @env['HTTP_ACCEPT'].to_s.strip
+      @accepts ||= begin
+        header = @env['HTTP_ACCEPT'].to_s.strip
 
-      if header.empty?
-        [content_type, Mime::ALL].compact
-      else
-        Mime::Type.parse(header)
+        if header.empty?
+          [content_type, Mime::ALL].compact
+        else
+          Mime::Type.parse(header)
+        end
       end
     end
-    memoize :accepts
 
     def if_modified_since
       if since = env['HTTP_IF_MODIFIED_SINCE']
         Time.rfc2822(since) rescue nil
       end
     end
-    memoize :if_modified_since
 
     def if_none_match
       env['HTTP_IF_NONE_MATCH']
@@ -256,25 +246,21 @@ EOM
 
       @env['REMOTE_ADDR']
     end
-    memoize :remote_ip
 
     # Returns the lowercase name of the HTTP server software.
     def server_software
       (@env['SERVER_SOFTWARE'] && /^([a-zA-Z]+)/ =~ @env['SERVER_SOFTWARE']) ? $1.downcase : nil
     end
-    memoize :server_software
 
     # Returns the complete URL used for this request.
     def url
       protocol + host_with_port + request_uri
     end
-    memoize :url
 
     # Returns 'https://' if this is an SSL request and 'http://' otherwise.
     def protocol
       ssl? ? 'https://' : 'http://'
     end
-    memoize :protocol
 
     # Is this an SSL request?
     def ssl?
@@ -294,14 +280,12 @@ EOM
     def host
       raw_host_with_port.sub(/:\d+$/, '')
     end
-    memoize :host
 
     # Returns a \host:\port string for this request, such as "example.com" or
     # "example.com:8080".
     def host_with_port
       "#{host}#{port_string}"
     end
-    memoize :host_with_port
 
     # Returns the port number of this request as an integer.
     def port
@@ -311,7 +295,6 @@ EOM
         standard_port
       end
     end
-    memoize :port
 
     # Returns the standard \port number for this request's protocol.
     def standard_port
@@ -349,7 +332,6 @@ EOM
     def query_string
       @env['QUERY_STRING'].present? ? @env['QUERY_STRING'] : (@env['REQUEST_URI'].split('?', 2)[1] || '')
     end
-    memoize :query_string
 
     # Returns the request URI, accounting for server idiosyncrasies.
     # WEBrick includes the full URL. IIS leaves REQUEST_URI blank.
@@ -375,7 +357,6 @@ EOM
         end
       end
     end
-    memoize :request_uri
 
     # Returns the interpreted \path to requested resource after all the installation
     # directory of this application was taken into account.
@@ -384,18 +365,22 @@ EOM
       path.sub!(/\A#{ActionController::Base.relative_url_root}/, '')
       path
     end
-    memoize :path
 
     # Read the request \body. This is useful for web services that need to
     # work with raw requests directly.
     def raw_post
-      parser.raw_post
+      unless @env.include? 'RAW_POST_DATA'
+        @env['RAW_POST_DATA'] = body.read(@env['CONTENT_LENGTH'].to_i)
+        body.rewind if body.respond_to?(:rewind)
+      end
+      @env['RAW_POST_DATA']
     end
 
     # Returns both GET and POST \parameters in a single hash.
     def parameters
       @parameters ||= request_parameters.merge(query_parameters).update(path_parameters).with_indifferent_access
     end
+    alias_method :params, :parameters
 
     def path_parameters=(parameters) #:nodoc:
       @env["rack.routing_args"] = parameters
@@ -417,33 +402,35 @@ EOM
       @env["rack.routing_args"] ||= {}
     end
 
+    # The request body is an IO input stream. If the RAW_POST_DATA environment
+    # variable is already set, wrap it in a StringIO.
     def body
-      parser.body
+      if raw_post = @env['RAW_POST_DATA']
+        raw_post.force_encoding(Encoding::BINARY) if raw_post.respond_to?(:force_encoding)
+        StringIO.new(raw_post)
+      else
+        @env['rack.input']
+      end
     end
 
-    def remote_addr
-      @env['REMOTE_ADDR']
+    def form_data?
+      FORM_DATA_MEDIA_TYPES.include?(content_type.to_s)
     end
 
-    def referrer
-      @env['HTTP_REFERER']
+    # Override Rack's GET method to support indifferent access
+    def GET
+      @env["action_controller.request.query_parameters"] ||= normalize_parameters(super)
     end
-    alias referer referrer
+    alias_method :query_parameters, :GET
 
-    def query_parameters
-      @query_parameters ||= parser.query_parameters
+    # Override Rack's POST method to support indifferent access
+    def POST
+      @env["action_controller.request.request_parameters"] ||= normalize_parameters(super)
     end
-
-    def request_parameters
-      @request_parameters ||= parser.request_parameters
-    end
+    alias_method :request_parameters, :POST
 
     def body_stream #:nodoc:
       @env['rack.input']
-    end
-
-    def cookies
-      Rack::Request.new(@env).cookies
     end
 
     def session
@@ -451,7 +438,7 @@ EOM
     end
 
     def session=(session) #:nodoc:
-      @session = session
+      @env['rack.session'] = session
     end
 
     def reset_session
@@ -475,8 +462,27 @@ EOM
         !(host.nil? || /\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.match(host))
       end
 
-      def parser
-        @parser ||= ActionController::RequestParser.new(@env)
+      # Convert nested Hashs to HashWithIndifferentAccess and replace
+      # file upload hashs with UploadedFile objects
+      def normalize_parameters(value)
+        case value
+        when Hash
+          if value.has_key?(:tempfile)
+            upload = value[:tempfile]
+            upload.extend(UploadedFile)
+            upload.original_path = value[:filename]
+            upload.content_type = value[:type]
+            upload
+          else
+            h = {}
+            value.each { |k, v| h[k] = normalize_parameters(v) }
+            h.with_indifferent_access
+          end
+        when Array
+          value.map { |e| normalize_parameters(e) }
+        else
+          value
+        end
       end
   end
 end
