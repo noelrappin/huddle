@@ -53,11 +53,6 @@ module ActiveRecord
       before_save :raise_on_session_data_overflow!
 
       class << self
-        # Don't try to reload ARStore::Session in dev mode.
-        def reloadable? #:nodoc:
-          false
-        end
-
         def data_column_size_limit
           @data_column_size_limit ||= columns_hash[@@data_column_name].limit
         end
@@ -104,7 +99,7 @@ module ActiveRecord
               define_method(:session_id=) { |session_id| self.sessid = session_id }
             else
               def self.find_by_session_id(session_id)
-                find :first, :conditions => ["session_id #{attribute_condition(session_id)}", session_id]
+                find :first, :conditions => {:session_id=>session_id}
               end
             end
           end
@@ -292,8 +287,7 @@ module ActiveRecord
       def get_session(env, sid)
         Base.silence do
           sid ||= generate_sid
-          session = @@session_class.find_by_session_id(sid)
-          session ||= @@session_class.new(:session_id => sid, :data => {})
+          session = find_session(sid)
           env[SESSION_RECORD_KEY] = session
           [sid, session.data]
         end
@@ -301,7 +295,7 @@ module ActiveRecord
 
       def set_session(env, sid, session_data)
         Base.silence do
-          record = env[SESSION_RECORD_KEY]
+          record = env[SESSION_RECORD_KEY] ||= find_session(sid)
           record.data = session_data
           return false unless record.save
 
@@ -314,6 +308,11 @@ module ActiveRecord
         end
 
         return true
+      end
+
+      def find_session(id)
+        @@session_class.find_by_session_id(id) ||
+          @@session_class.new(:session_id => id, :data => {})
       end
   end
 end

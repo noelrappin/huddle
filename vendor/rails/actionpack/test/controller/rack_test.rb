@@ -57,67 +57,67 @@ class BaseRackTest < Test::Unit::TestCase
     @request.env['REQUEST_METHOD'] = 'POST'
     @request.env['CONTENT_LENGTH'] = data.length
     @request.env['CONTENT_TYPE'] = 'application/x-www-form-urlencoded; charset=utf-8'
-    @request.env['RAW_POST_DATA'] = data
+    @request.env['rack.input'] = StringIO.new(data)
   end
 end
 
 class RackRequestTest < BaseRackTest
   def test_proxy_request
-    assert_equal 'glu.ttono.us', @request.host_with_port(true)
+    assert_equal 'glu.ttono.us', @request.host_with_port
   end
 
   def test_http_host
     @env.delete "HTTP_X_FORWARDED_HOST"
     @env['HTTP_HOST'] = "rubyonrails.org:8080"
-    assert_equal "rubyonrails.org", @request.host(true)
-    assert_equal "rubyonrails.org:8080", @request.host_with_port(true)
+    assert_equal "rubyonrails.org", @request.host
+    assert_equal "rubyonrails.org:8080", @request.host_with_port
 
     @env['HTTP_X_FORWARDED_HOST'] = "www.firsthost.org, www.secondhost.org"
-    assert_equal "www.secondhost.org", @request.host(true)
+    assert_equal "www.secondhost.org", @request.host
   end
 
   def test_http_host_with_default_port_overrides_server_port
     @env.delete "HTTP_X_FORWARDED_HOST"
     @env['HTTP_HOST'] = "rubyonrails.org"
-    assert_equal "rubyonrails.org", @request.host_with_port(true)
+    assert_equal "rubyonrails.org", @request.host_with_port
   end
 
   def test_host_with_port_defaults_to_server_name_if_no_host_headers
     @env.delete "HTTP_X_FORWARDED_HOST"
     @env.delete "HTTP_HOST"
-    assert_equal "glu.ttono.us:8007", @request.host_with_port(true)
+    assert_equal "glu.ttono.us:8007", @request.host_with_port
   end
 
   def test_host_with_port_falls_back_to_server_addr_if_necessary
     @env.delete "HTTP_X_FORWARDED_HOST"
     @env.delete "HTTP_HOST"
     @env.delete "SERVER_NAME"
-    assert_equal "207.7.108.53", @request.host(true)
-    assert_equal 8007, @request.port(true)
-    assert_equal "207.7.108.53:8007", @request.host_with_port(true)
+    assert_equal "207.7.108.53", @request.host
+    assert_equal 8007, @request.port
+    assert_equal "207.7.108.53:8007", @request.host_with_port
   end
 
   def test_host_with_port_if_http_standard_port_is_specified
     @env['HTTP_X_FORWARDED_HOST'] = "glu.ttono.us:80"
-    assert_equal "glu.ttono.us", @request.host_with_port(true)
+    assert_equal "glu.ttono.us", @request.host_with_port
   end
 
   def test_host_with_port_if_https_standard_port_is_specified
     @env['HTTP_X_FORWARDED_PROTO'] = "https"
     @env['HTTP_X_FORWARDED_HOST'] = "glu.ttono.us:443"
-    assert_equal "glu.ttono.us", @request.host_with_port(true)
+    assert_equal "glu.ttono.us", @request.host_with_port
   end
 
   def test_host_if_ipv6_reference
     @env.delete "HTTP_X_FORWARDED_HOST"
     @env['HTTP_HOST'] = "[2001:1234:5678:9abc:def0::dead:beef]"
-    assert_equal "[2001:1234:5678:9abc:def0::dead:beef]", @request.host(true)
+    assert_equal "[2001:1234:5678:9abc:def0::dead:beef]", @request.host
   end
 
   def test_host_if_ipv6_reference_with_port
     @env.delete "HTTP_X_FORWARDED_HOST"
     @env['HTTP_HOST'] = "[2001:1234:5678:9abc:def0::dead:beef]:8008"
-    assert_equal "[2001:1234:5678:9abc:def0::dead:beef]", @request.host(true)
+    assert_equal "[2001:1234:5678:9abc:def0::dead:beef]", @request.host
   end
 
   def test_cgi_environment_variables
@@ -219,13 +219,28 @@ class RackResponseTest < BaseRackTest
       "Content-Type" => "text/html; charset=utf-8",
       "Cache-Control" => "private, max-age=0, must-revalidate",
       "ETag" => '"65a8e27d8879283831b664bd8b7f0ad4"',
-      "Set-Cookie" => [],
+      "Set-Cookie" => "",
       "Content-Length" => "13"
     }, headers)
 
     parts = []
     body.each { |part| parts << part }
     assert_equal ["Hello, World!"], parts
+  end
+
+  def test_utf8_output
+    @response.body = [1090, 1077, 1089, 1090].pack("U*")
+    @response.prepare!
+
+    status, headers, body = @response.to_a
+    assert_equal 200, status
+    assert_equal({
+      "Content-Type" => "text/html; charset=utf-8",
+      "Cache-Control" => "private, max-age=0, must-revalidate",
+      "ETag" => '"ebb5e89e8a94e9dd22abf5d915d112b2"',
+      "Set-Cookie" => "",
+      "Content-Length" => "8"
+    }, headers)
   end
 
   def test_streaming_block
@@ -236,7 +251,11 @@ class RackResponseTest < BaseRackTest
 
     status, headers, body = @response.to_a
     assert_equal 200, status
-    assert_equal({"Content-Type" => "text/html; charset=utf-8", "Cache-Control" => "no-cache", "Set-Cookie" => []}, headers)
+    assert_equal({
+      "Content-Type" => "text/html; charset=utf-8",
+      "Cache-Control" => "no-cache",
+      "Set-Cookie" => ""
+    }, headers)
 
     parts = []
     body.each { |part| parts << part }

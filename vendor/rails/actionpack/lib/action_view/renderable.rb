@@ -1,3 +1,5 @@
+# encoding: utf-8
+
 module ActionView
   # NOTE: The template that this mixin is being included into is frozen
   # so you cannot set or modify any instance variables
@@ -16,7 +18,6 @@ module ActionView
     def compiled_source
       handler.call(self)
     end
-    memoize :compiled_source
 
     def method_name_without_locals
       ['_run', extension, method_segment].compact.join('_')
@@ -60,7 +61,7 @@ module ActionView
       def compile(local_assigns)
         render_symbol = method_name(local_assigns)
 
-        if recompile?(render_symbol)
+        if !Base::CompiledTemplates.method_defined?(render_symbol) || recompile?
           compile!(render_symbol, local_assigns)
         end
       end
@@ -78,6 +79,8 @@ module ActionView
 
         begin
           ActionView::Base::CompiledTemplates.module_eval(source, filename, 0)
+        rescue Errno::ENOENT => e
+          raise e # Missing template file, re-raise for Base to rescue
         rescue Exception => e # errors from template code
           if logger = defined?(ActionController) && Base.logger
             logger.debug "ERROR: compiling #{render_symbol} RAISED #{e}"
@@ -89,11 +92,8 @@ module ActionView
         end
       end
 
-      # Method to check whether template compilation is necessary.
-      # The template will be compiled if the file has not been compiled yet, or
-      # if local_assigns has a new key, which isn't supported by the compiled code yet.
-      def recompile?(symbol)
-        !Base::CompiledTemplates.method_defined?(symbol) || !loaded?
+      def recompile?
+        false
       end
   end
 end

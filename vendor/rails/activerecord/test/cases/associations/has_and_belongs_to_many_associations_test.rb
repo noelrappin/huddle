@@ -767,12 +767,21 @@ class HasAndBelongsToManyAssociationsTest < ActiveRecord::TestCase
     assert_equal 1, developer.projects.count
   end
 
-  uses_mocha 'mocking Post.transaction' do
-    def test_association_proxy_transaction_method_starts_transaction_in_association_class
-      Post.expects(:transaction)
-      Category.find(:first).posts.transaction do
-        # nothing
-      end
+  def test_association_proxy_transaction_method_starts_transaction_in_association_class
+    Post.expects(:transaction)
+    Category.find(:first).posts.transaction do
+      # nothing
     end
   end
+
+  def test_caching_of_columns
+    david = Developer.find(1)
+    # clear cache possibly created by other tests
+    david.projects.reset_column_information
+    assert_queries(0) { david.projects.columns; david.projects.columns }
+    # and again to verify that reset_column_information clears the cache correctly
+    david.projects.reset_column_information
+    assert_queries(0) { david.projects.columns; david.projects.columns }
+  end
+
 end
