@@ -462,7 +462,7 @@ module ActiveResource
       #   that_guy.valid? # => false
       #   that_guy.new?   # => true
       def create(attributes = {})
-        returning(self.new(attributes)) { |res| res.save }
+        self.new(attributes).tap { |resource| resource.save }
       end
 
       # Core method for finding resources.  Used similarly to Active Record's +find+ method.
@@ -600,7 +600,7 @@ module ActiveResource
         end
 
         def instantiate_record(record, prefix_options = {})
-          returning new(record) do |resource|
+          new(record).tap do |resource|
             resource.prefix_options = prefix_options
           end
         end
@@ -746,7 +746,7 @@ module ActiveResource
     #   # => true
     #
     def ==(other)
-      other.equal?(self) || (other.instance_of?(self.class) && !other.new? && other.id == id)
+      other.equal?(self) || (other.instance_of?(self.class) && other.id == id && other.prefix_options == prefix_options)
     end
 
     # Tests for equality (delegates to ==).
@@ -773,7 +773,7 @@ module ActiveResource
     #   my_invoice.customer   # => That Company
     #   next_invoice.customer # => That Company
     def dup
-      returning self.class.new do |resource|
+      self.class.new.tap do |resource|
         resource.attributes     = @attributes
         resource.prefix_options = @prefix_options
       end
@@ -985,14 +985,14 @@ module ActiveResource
 
       # Update the resource on the remote service.
       def update
-        returning connection.put(element_path(prefix_options), encode, self.class.headers) do |response|
+        connection.put(element_path(prefix_options), encode, self.class.headers).tap do |response|
           load_attributes_from_response(response)
         end
       end
 
       # Create (i.e., \save to the remote service) the \new resource.
       def create
-        returning connection.post(collection_path, encode, self.class.headers) do |response|
+        connection.post(collection_path, encode, self.class.headers).tap do |response|
           self.id = id_from_response(response)
           load_attributes_from_response(response)
         end
@@ -1006,7 +1006,7 @@ module ActiveResource
 
       # Takes a response from a typical create post and pulls the ID out
       def id_from_response(response)
-        response['Location'][/\/([^\/]*?)(\.\w+)?$/, 1]
+        response['Location'][/\/([^\/]*?)(\.\w+)?$/, 1] if response['Location']
       end
 
       def element_path(options = nil)
