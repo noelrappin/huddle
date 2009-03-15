@@ -83,6 +83,13 @@ class HasOwnLayoutController < LayoutTest
   layout 'item'
 end
 
+class PrependsViewPathController < LayoutTest
+  def hello
+    prepend_view_path File.dirname(__FILE__) + '/../fixtures/layout_tests/alt/'
+    render :layout => 'alt'
+  end
+end
+
 class SetsLayoutInRenderController < LayoutTest
   def hello
     render :layout => 'third_party_template_library'
@@ -130,6 +137,12 @@ class LayoutSetInResponseTest < ActionController::TestCase
   ensure
     ActionController::Base.exempt_from_layout.delete(/\.rhtml$/)
   end
+  
+  def test_layout_is_picked_from_the_controller_instances_view_path
+    @controller = PrependsViewPathController.new
+    get :hello
+    assert_equal 'layouts/alt', @response.layout
+  end
 end
 
 class RenderWithTemplateOptionController < LayoutTest
@@ -146,8 +159,7 @@ class LayoutExceptionRaised < ActionController::TestCase
   def test_exception_raised_when_layout_file_not_found
     @controller = SetsNonExistentLayoutFile.new
     get :hello
-    @response.template.class.module_eval { attr_accessor :exception }
-    assert_equal ActionView::MissingTemplate, @response.template.exception.class
+    assert_kind_of ActionView::MissingTemplate, @response.template.instance_eval { @exception }
   end
 end
 
@@ -179,3 +191,4 @@ unless RUBY_PLATFORM =~ /(:?mswin|mingw|bccwin)/
     end
   end
 end
+
