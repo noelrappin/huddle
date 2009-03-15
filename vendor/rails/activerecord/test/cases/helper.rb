@@ -2,7 +2,11 @@ $:.unshift(File.dirname(__FILE__) + '/../../lib')
 $:.unshift(File.dirname(__FILE__) + '/../../../activesupport/lib')
 
 require 'config'
+
+require 'rubygems'
 require 'test/unit'
+gem 'mocha', '>= 0.9.5'
+require 'mocha'
 
 require 'active_record'
 require 'active_record/test_case'
@@ -24,17 +28,8 @@ def current_adapter?(*types)
   end
 end
 
-def uses_mocha(description)
-  require 'rubygems'
-  gem 'mocha', '>= 0.9.3'
-  require 'mocha'
-  yield
-rescue LoadError
-  $stderr.puts "Skipping #{description} tests. `gem install mocha` and try again."
-end
-
 ActiveRecord::Base.connection.class.class_eval do
-  IGNORED_SQL = [/^PRAGMA/, /^SELECT currval/, /^SELECT CAST/, /^SELECT @@IDENTITY/, /^SELECT @@ROWCOUNT/]
+  IGNORED_SQL = [/^PRAGMA/, /^SELECT currval/, /^SELECT CAST/, /^SELECT @@IDENTITY/, /^SELECT @@ROWCOUNT/, /^SAVEPOINT/, /^ROLLBACK TO SAVEPOINT/, /^RELEASE SAVEPOINT/, /SHOW FIELDS/]
 
   def execute_with_query_record(sql, name = nil, &block)
     $queries_executed ||= []

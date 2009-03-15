@@ -4,9 +4,11 @@ class OrderedHashTest < Test::Unit::TestCase
   def setup
     @keys =   %w( blue   green  red    pink   orange )
     @values = %w( 000099 009900 aa0000 cc0066 cc6633 )
+    @hash = Hash.new
     @ordered_hash = ActiveSupport::OrderedHash.new
 
     @keys.each_with_index do |key, index|
+      @hash[key] = @values[index]
       @ordered_hash[key] = @values[index]
     end
   end
@@ -17,7 +19,7 @@ class OrderedHashTest < Test::Unit::TestCase
   end
 
   def test_access
-    assert @keys.zip(@values).all? { |k, v| @ordered_hash[k] == v }
+    assert @hash.all? { |k, v| @ordered_hash[k] == v }
   end
 
   def test_assignment
@@ -43,6 +45,10 @@ class OrderedHashTest < Test::Unit::TestCase
     assert_equal @ordered_hash.keys.length, @ordered_hash.length
 
     assert_nil @ordered_hash.delete(bad_key)
+  end
+
+  def test_to_hash
+    assert_same @ordered_hash, @ordered_hash.to_hash
   end
 
   def test_has_key
@@ -98,7 +104,8 @@ class OrderedHashTest < Test::Unit::TestCase
   end
 
   def test_delete_if
-    (copy = @ordered_hash.dup).delete('pink')
+    copy = @ordered_hash.dup
+    copy.delete('pink')
     assert_equal copy, @ordered_hash.delete_if { |k, _| k == 'pink' }
     assert !@ordered_hash.keys.include?('pink')
   end
@@ -115,6 +122,7 @@ class OrderedHashTest < Test::Unit::TestCase
     new_ordered_hash = @ordered_hash.reject { |k, _| k == 'pink' }
     assert_equal copy, @ordered_hash
     assert !new_ordered_hash.keys.include?('pink')
+    assert @ordered_hash.keys.include?('pink')
   end
 
   def test_clear
@@ -139,5 +147,15 @@ class OrderedHashTest < Test::Unit::TestCase
     pair = @ordered_hash.shift
     assert_equal [@keys.first, @values.first], pair
     assert !@ordered_hash.keys.include?(pair.first)
+  end
+  
+  def test_keys
+    original = @ordered_hash.keys.dup
+    @ordered_hash.keys.pop
+    assert_equal original, @ordered_hash.keys
+  end
+
+  def test_inspect
+    assert @ordered_hash.inspect.include?(@hash.inspect)
   end
 end
