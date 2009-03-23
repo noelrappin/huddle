@@ -2,11 +2,29 @@
 
 <% form_for(@project) do |f| %>
   <%= f.error_messages %>
-
   <p>
     <%= f.label :name %><br />
     <%= f.text_field :name %>
   </p>
+  
+  <h2>Users In Project</h2>
+  <table>
+    <% User.by_login.all.each do |user| %>
+      <tr>
+        <td>
+          <%= check_box_tag "users_in_project[]", user.id, 
+              user.projects.exists?(@project.id),
+              :id => dom_id(user, :checkbox) %>     
+        </td>
+        <td>
+          <label for="<%= dom_id(user, :checkbox) %>">
+            <%= h user.login %>
+          </label>
+        </td>
+      </tr>
+  
+    <% end %>
+  </table>
   <p>
     <%= f.submit "Update" %>
   </p>

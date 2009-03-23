@@ -4,6 +4,9 @@ module NavigationHelpers
     
     when /the homepage/
       root_path
+    when /the new users_and_projects page/
+      new_users_and_projects_path
+
     
     # Add more page name => path mappings here
     
