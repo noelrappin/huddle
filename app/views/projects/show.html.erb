@@ -1,3 +1,15 @@
+<h2>Users for <%= @project.name %></h2>
+
+<table border="0" width="">
+  <% @project.users.each do |user| %>
+	  <tr>
+  		<td><%= h user.login %></td>
+  		<td><%= h user.email %></td>
+  	</tr>
+  <% end %>
+</table>
+
+
 <h2>Status Reports for <%= @project.name %></h2>
 <% @reports.keys.sort.each do |date| %>
   <div id="<%= date.to_s(:db) %>_day">

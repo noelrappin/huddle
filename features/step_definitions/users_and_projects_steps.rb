@@ -38,3 +38,7 @@ And /^I do not see "beta@example\.com"$/ do
   pending
 end
 
+Then /^I am taken to (.*)$/ do |path|
+  assert(current_url.ends_with?(path_to(path)))
+end
+

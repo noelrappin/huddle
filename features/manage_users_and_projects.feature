@@ -19,10 +19,11 @@ Feature: Add users to project
   
   Scenario: See users in project edit
     Given I am on the edit page for "Conquer The World"
-    When I check the box for user alpha
-    And I press "Submit"
-    Then I see "alpha@example.com"
-    And I do not see "beta@example.com"
+    When I check "alpha"
+    And I press "Update"
+    Then I am taken to the show page for "Conquer The World"
+    And I should see "alpha@example.com"
+    And I should not see "beta@example.com"
   
   
   

@@ -72,4 +72,12 @@ class ProjectsControllerTest < ActionController::TestCase
     end
   end
   
+  test "should update with users" do
+    set_current_project(:huddle)
+    put :update, :id => projects(:huddle).id, 
+        :users_in_project => [users(:quentin).id]
+    huddle = Project.find_by_name("Huddle")
+    assert_equal [users(:quentin).id], huddle.user_ids
+  end
+  
 end

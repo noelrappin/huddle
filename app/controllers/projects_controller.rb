@@ -58,7 +58,8 @@ class ProjectsController < ApplicationController
   # PUT /projects/1.xml
   def update
     @project = Project.find(params[:id])
-
+    @users = begin User.find(params[:users_in_project]) rescue [] end
+    @project.users = @users
     respond_to do |format|
       if @project.update_attributes(params[:project])
         flash[:notice] = 'Project was successfully updated.'

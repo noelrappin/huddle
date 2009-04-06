@@ -6,8 +6,12 @@ module NavigationHelpers
       root_path
     when /the new users_and_projects page/
       new_users_and_projects_path
-
-    
+    when /edit page for "(.*)"/
+      @project = Project.find_by_name($1)
+      edit_project_path(@project)
+    when /show page for "(.*)"/
+      @project = Project.find_by_name($1)
+      project_path(@project)
     # Add more page name => path mappings here
     
     else
