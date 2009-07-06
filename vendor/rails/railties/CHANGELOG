@@ -1,4 +1,14 @@
-*2.3.0 [Edge]*
+*2.3.2 [Final] (March 15, 2009)*
+
+* Allow metal to live in plugins #2045 [Matthew Rudy]
+
+* Added metal [Josh Peek]
+
+* Remove script/performance/request in favour of the performance integration tests. [Pratik Naik]
+
+  To continue using script/performance/request, install the request_profiler plugin :
+
+    script/plugin install git://github.com/rails/request_profiler.git
 
 * Add a rake task to apply a template to an existing application : rake rails:template LOCATION=~/template.rb [Pratik Naik]
 

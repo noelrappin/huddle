@@ -193,9 +193,8 @@ module ActionController
   #
   #   map.connect '*path' , :controller => 'blog' , :action => 'unrecognized?'
   #
-  # will glob all remaining parts of the route that were not recognized earlier. This idiom
-  # must appear at the end of the path. The globbed values are in <tt>params[:path]</tt> in
-  # this case.
+  # will glob all remaining parts of the route that were not recognized earlier. 
+  # The globbed values are in <tt>params[:path]</tt> as an array of path segments.
   #
   # == Route conditions
   #
@@ -268,7 +267,7 @@ module ActionController
   module Routing
     SEPARATORS = %w( / . ? )
 
-    HTTP_METHODS = [:get, :head, :post, :put, :delete]
+    HTTP_METHODS = [:get, :head, :post, :put, :delete, :options]
 
     ALLOWED_REQUIREMENTS_FOR_OPTIMISATION = [:controller, :action].to_set
 
