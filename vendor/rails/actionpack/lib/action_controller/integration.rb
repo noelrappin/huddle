@@ -2,21 +2,10 @@ require 'stringio'
 require 'uri'
 require 'active_support/test_case'
 
-# Monkey patch Rack::Lint to support rewind
-module Rack
-  class Lint
-    class InputWrapper
-      def rewind
-        @input.rewind
-      end
-    end
-  end
-end
-
 module ActionController
   module Integration #:nodoc:
     # An integration Session instance represents a set of requests and responses
-    # performed sequentially by some virtual user. Becase you can instantiate
+    # performed sequentially by some virtual user. Because you can instantiate
     # multiple sessions and run them side-by-side, you can also mimic (to some
     # limited extent) multiple simultaneous users interacting with your system.
     #
@@ -36,6 +25,9 @@ module ActionController
 
       # The status message that accompanied the status code of the last request.
       attr_reader :status_message
+
+      # The body of the last request.
+      attr_reader :body
 
       # The URI of the last request.
       attr_reader :path
@@ -68,21 +60,12 @@ module ActionController
       # A running counter of the number of requests processed.
       attr_accessor :request_count
 
-      # Nonce value for Digest Authentication, implicitly set on response with WWW-Authentication
-      attr_accessor :nonce
-
-      # Opaque value for Digest Authentication, implicitly set on response with WWW-Authentication
-      attr_accessor :opaque
-
-      # Opaque value for Authentication, implicitly set on response with WWW-Authentication
-      attr_accessor :realm
-
       class MultiPartNeededException < Exception
       end
 
       # Create and initialize a new Session instance.
-      def initialize(app)
-        @application = app
+      def initialize(app = nil)
+        @application = app || ActionController::Dispatcher.new
         reset!
       end
 
@@ -252,53 +235,6 @@ module ActionController
       end
       alias xhr :xml_http_request
 
-      def request_with_noauth(http_method, uri, parameters, headers) 
-        process_with_auth http_method, uri, parameters, headers
-      end 
-
-      # Performs a request with the given http_method and parameters, including HTTP Basic authorization headers. 
-      # See get() for more details on paramters and headers. 
-      # 
-      # You can perform GET, POST, PUT, DELETE, and HEAD requests with #get_with_basic, #post_with_basic, 
-      # #put_with_basic, #delete_with_basic, and #head_with_basic. 
-      def request_with_basic(http_method, uri, parameters, headers, user_name, password) 
-        process_with_auth http_method, uri, parameters, headers.merge(:authorization => ActionController::HttpAuthentication::Basic.encode_credentials(user_name, password)) 
-      end 
-
-      # Performs a request with the given http_method and parameters, including HTTP Digest authorization headers. 
-      # See get() for more details on paramters and headers. 
-      # 
-      # You can perform GET, POST, PUT, DELETE, and HEAD requests with #get_with_digest, #post_with_digest, 
-      # #put_with_digest, #delete_with_digest, and #head_with_digest. 
-      def request_with_digest(http_method, uri, parameters, headers, user_name, password) 
-        # Realm, Nonce, and Opaque taken from previoius 401 response
-        
-        credentials = {
-          :username => user_name,
-          :realm    => @realm,
-          :nonce    => @nonce,
-          :qop      => "auth",
-          :nc       => "00000001",
-          :cnonce   => "0a4f113b",
-          :opaque   => @opaque,
-          :uri      => uri
-        }
-        
-        raise "Digest request without previous 401 response" if @opaque.nil?
- 
-        process_with_auth http_method, uri, parameters, headers.merge(:authorization => ActionController::HttpAuthentication::Digest.encode_credentials(http_method, credentials, password)) 
-      end 
-
-      # def get_with_basic, def post_with_basic, def put_with_basic, def delete_with_basic, def head_with_basic 
-      # def get_with_digest, def post_with_digest, def put_with_digest, def delete_with_digest, def head_with_digest 
-      [:get, :post, :put, :delete, :head].each do |method| 
-        [:noauth, :basic, :digest].each do |auth_type| 
-          define_method("#{method}_with_#{auth_type}") do |uri, parameters, headers, *auth| 
-            send("request_with_#{auth_type}", method, uri, parameters, headers, *auth) 
-          end 
-        end 
-      end
-
       # Returns the URL for the given options, according to the rules specified
       # in the application's routes.
       def url_for(options)
@@ -367,13 +303,19 @@ module ActionController
             env[key] = value
           end
 
-          unless ActionController::Base.respond_to?(:clear_last_instantiation!)
-            ActionController::Base.module_eval { include ControllerCapture }
+          [ControllerCapture, ActionController::ProcessWithTest].each do |mod|
+            unless ActionController::Base < mod
+              ActionController::Base.class_eval { include mod }
+            end
           end
 
           ActionController::Base.clear_last_instantiation!
 
-          app = Rack::Lint.new(@application)
+          app = @application
+          # Rack::Lint doesn't accept String headers or bodies in Ruby 1.9
+          unless RUBY_VERSION >= '1.9.0' && Rack.release <= '0.9.0'
+            app = Rack::Lint.new(app)
+          end
 
           status, headers, body = app.call(env)
           @request_count += 1
@@ -385,17 +327,22 @@ module ActionController
 
           @headers = Rack::Utils::HeaderHash.new(headers)
 
-          (@headers['Set-Cookie'] || []).each do |cookie|
+          (@headers['Set-Cookie'] || "").split("\n").each do |cookie|
             name, value = cookie.match(/^([^=]*)=([^;]*);/)[1,2]
             @cookies[name] = value
           end
 
           @body = ""
-          body.each { |part| @body << part }
+          if body.is_a?(String)
+            @body << body
+          else
+            body.each { |part| @body << part }
+          end
 
           if @controller = ActionController::Base.last_instantiation
             @request = @controller.request
             @response = @controller.response
+            @controller.send(:set_test_assigns)
           else
             # Decorate responses from Rack Middleware and Rails Metal
             # as an Response for the purposes of integration testing
@@ -417,32 +364,6 @@ module ActionController
             multipart_body(parameters, boundary),
             (headers || {}).merge(
               {"CONTENT_TYPE" => "multipart/form-data; boundary=#{boundary}"}))
-          return status
-        end
-
-        # Same as process, but handles authentication returns to perform
-        # Basic or Digest authentication
-        def process_with_auth(method, path, parameters = nil, headers = nil)
-          status = process(method, path, parameters, headers)
-
-          if status == 401
-            # Extract authentication information from response
-            auth_data = @response.headers['WWW-Authenticate']
-            if /^Basic /.match(auth_data)
-              # extract realm, to be used in subsequent request
-              @realm = auth_header.split(' ')[1]
-            elsif /^Digest/.match(auth_data)
-              creds = auth_data.to_s.gsub(/^Digest\s+/,'').split(',').inject({}) do |hash, pair| 
-                key, value = pair.split('=', 2) 
-                hash[key.strip.to_sym] = value.to_s.gsub(/^"|"$/,'').gsub(/'/, '') 
-                hash 
-              end 
-              @realm = creds[:realm]
-              @nonce = creds[:nonce]
-              @opaque = creds[:opaque]
-            end
-          end
-
           return status
         end
 
@@ -510,7 +431,7 @@ module ActionController
         def multipart_body(params, boundary)
           multipart_requestify(params).map do |key, value|
             if value.respond_to?(:original_filename)
-              File.open(value.path) do |f|
+              File.open(value.path, "rb") do |f|
                 f.set_encoding(Encoding::BINARY) if f.respond_to?(:set_encoding)
 
                 <<-EOF
@@ -591,7 +512,6 @@ EOF
       # can use this method to open multiple sessions that ought to be tested
       # simultaneously.
       def open_session(application = nil)
-        application ||= ActionController::Dispatcher.new
         session = Integration::Session.new(application)
 
         # delegate the fixture accessors back to the test instance

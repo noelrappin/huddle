@@ -24,11 +24,12 @@ module ActiveSupport #:nodoc:
           "Bignum"     => "integer",
           "BigDecimal" => "decimal",
           "Float"      => "float",
+          "TrueClass"  => "boolean",
+          "FalseClass" => "boolean",
           "Date"       => "date",
           "DateTime"   => "datetime",
           "Time"       => "datetime",
-          "TrueClass"  => "boolean",
-          "FalseClass" => "boolean"
+          "ActiveSupport::TimeWithZone" => "datetime"
         } unless defined?(XML_TYPE_NAMES)
 
         XML_FORMATTING = {
@@ -75,7 +76,7 @@ module ActiveSupport #:nodoc:
         # Converts a hash into a string suitable for use as a URL query string. An optional <tt>namespace</tt> can be
         # passed to enclose the param names (see example below).
         #
-        # ==== Example:
+        # ==== Examples
         #   { :name => 'David', :nationality => 'Danish' }.to_query # => "name=David&nationality=Danish"
         #
         #   { :name => 'David', :nationality => 'Danish' }.to_query('user') # => "user%5Bname%5D=David&user%5Bnationality%5D=Danish"

@@ -1,42 +1,42 @@
 module ActionController
   module HttpAuthentication
     # Makes it dead easy to do HTTP Basic authentication.
-    # 
+    #
     # Simple Basic example:
-    # 
+    #
     #   class PostsController < ApplicationController
     #     USER_NAME, PASSWORD = "dhh", "secret"
-    #   
+    #
     #     before_filter :authenticate, :except => [ :index ]
-    #   
+    #
     #     def index
     #       render :text => "Everyone can see me!"
     #     end
-    #   
+    #
     #     def edit
     #       render :text => "I'm only accessible if you know the password"
     #     end
-    #   
+    #
     #     private
     #       def authenticate
-    #         authenticate_or_request_with_http_basic do |user_name, password| 
+    #         authenticate_or_request_with_http_basic do |user_name, password|
     #           user_name == USER_NAME && password == PASSWORD
     #         end
     #       end
     #   end
-    # 
-    # 
-    # Here is a more advanced Basic example where only Atom feeds and the XML API is protected by HTTP authentication, 
+    #
+    #
+    # Here is a more advanced Basic example where only Atom feeds and the XML API is protected by HTTP authentication,
     # the regular HTML interface is protected by a session approach:
-    # 
+    #
     #   class ApplicationController < ActionController::Base
     #     before_filter :set_account, :authenticate
-    #   
+    #
     #     protected
     #       def set_account
     #         @account = Account.find_by_url_name(request.subdomains.first)
     #       end
-    #   
+    #
     #       def authenticate
     #         case request.format
     #         when Mime::XML, Mime::ATOM
@@ -54,48 +54,55 @@ module ActionController
     #         end
     #       end
     #   end
-    # 
-    # Simple Digest example. Note the block must return the user's password so the framework 
-    # can appropriately hash it to check the user's credentials. Returning nil will cause authentication to fail. 
-    #  
-    #   class PostsController < ApplicationController 
-    #     Users = {"dhh" => "secret"} 
-    #    
-    #     before_filter :authenticate, :except => [ :index ] 
-    #    
-    #     def index 
-    #       render :text => "Everyone can see me!" 
-    #     end 
-    #    
-    #     def edit 
-    #       render :text => "I'm only accessible if you know the password" 
-    #     end 
-    #    
-    #     private 
-    #       def authenticate 
-    #         authenticate_or_request_with_http_digest(realm) do |user_name|  
-    #           Users[user_name] 
-    #         end 
-    #       end 
-    #   end
-    #
     #
     # In your integration tests, you can do something like this:
-    # 
+    #
     #   def test_access_granted_from_xml
     #     get(
-    #       "/notes/1.xml", nil, 
+    #       "/notes/1.xml", nil,
     #       :authorization => ActionController::HttpAuthentication::Basic.encode_credentials(users(:dhh).name, users(:dhh).password)
     #     )
-    # 
+    #
     #     assert_equal 200, status
     #   end
-    #  
-    #  
+    #
+    # Simple Digest example:
+    #
+    #   require 'digest/md5'
+    #   class PostsController < ApplicationController
+    #     REALM = "SuperSecret"
+    #     USERS = {"dhh" => "secret", #plain text password
+    #              "dap" => Digest:MD5::hexdigest(["dap",REALM,"secret"].join(":"))  #ha1 digest password
+    #
+    #     before_filter :authenticate, :except => [:index]
+    #
+    #     def index
+    #       render :text => "Everyone can see me!"
+    #     end
+    #
+    #     def edit
+    #       render :text => "I'm only accessible if you know the password"
+    #     end
+    #
+    #     private
+    #       def authenticate
+    #         authenticate_or_request_with_http_digest(REALM) do |username|
+    #           USERS[username]
+    #         end
+    #       end
+    #   end
+    #
+    # NOTE: The +authenticate_or_request_with_http_digest+ block must return the user's password or the ha1 digest hash so the framework can appropriately
+    #       hash to check the user's credentials. Returning +nil+ will cause authentication to fail.
+    #       Storing the ha1 hash: MD5(username:realm:password), is better than storing a plain password. If
+    #       the password file or database is compromised, the attacker would be able to use the ha1 hash to
+    #       authenticate as the user at this +realm+, but would not have the user's password to try using at
+    #       other sites.
+    #
     # On shared hosts, Apache sometimes doesn't pass authentication headers to
     # FCGI instances. If your environment matches this description and you cannot
     # authenticate, try this rule in your Apache setup:
-    # 
+    #
     #   RewriteRule ^(.*)$ dispatch.fcgi [E=X-HTTP_AUTHORIZATION:%{HTTP:Authorization},QSA,L]
     module Basic
       extend self
@@ -123,19 +130,16 @@ module ActionController
       def user_name_and_password(request)
         decode_credentials(request).split(/:/, 2)
       end
-  
+
       def authorization(request)
         request.env['HTTP_AUTHORIZATION']   ||
         request.env['X-HTTP_AUTHORIZATION'] ||
         request.env['X_HTTP_AUTHORIZATION'] ||
         request.env['REDIRECT_X_HTTP_AUTHORIZATION']
       end
-    
+
       def decode_credentials(request)
-        # Properly decode credentials spanning a new-line
-        auth = authorization(request)
-        auth.slice!('Basic ')
-        ActiveSupport::Base64.decode64(auth || '')
+        ActiveSupport::Base64.decode64(authorization(request).split.last || '')
       end
 
       def encode_credentials(user_name, password)
@@ -147,50 +151,29 @@ module ActionController
         controller.__send__ :render, :text => "HTTP Basic: Access denied.\n", :status => :unauthorized
       end
     end
-    
+
     module Digest
       extend self
-    
+
       module ControllerMethods
         def authenticate_or_request_with_http_digest(realm = "Application", &password_procedure)
-          begin 
-            authenticate_with_http_digest!(realm, &password_procedure)
-          rescue ActionController::HttpAuthentication::Error => e
-            msg = e.message
-            msg = "#{msg} expected '#{e.expected}' was '#{e.was}'" unless e.expected.nil?
-            raise msg if e.fatal?
-            request_http_digest_authentication(realm, msg)
-          end
-        end
-
-        # Authenticate using HTTP Digest, throwing ActionController::HttpAuthentication::Error on failure.
-        # This allows more detailed analysis of authentication failures
-        # to be relayed to the client.
-        def authenticate_with_http_digest!(realm = "Application", &login_procedure)
-            HttpAuthentication::Digest.authenticate(self, realm, &login_procedure)
+          authenticate_with_http_digest(realm, &password_procedure) || request_http_digest_authentication(realm)
         end
 
         # Authenticate with HTTP Digest, returns true or false
-        def authenticate_with_http_digest(realm = "Application", &login_procedure)
-          HttpAuthentication::Digest.authenticate(self, realm, &login_procedure) rescue false
+        def authenticate_with_http_digest(realm = "Application", &password_procedure)
+          HttpAuthentication::Digest.authenticate(self, realm, &password_procedure)
         end
 
         # Render output including the HTTP Digest authentication header
         def request_http_digest_authentication(realm = "Application", message = nil)
           HttpAuthentication::Digest.authentication_request(self, realm, message)
         end
-        
-        # Add HTTP Digest authentication header to result headers
-        def http_digest_authentication_header(realm = "Application")
-          HttpAuthentication::Digest.authentication_header(self, realm)
-        end
       end
 
-      # Raises error unless authentictaion succeeds, returns true otherwise
+      # Returns false on a valid response, true otherwise
       def authenticate(controller, realm, &password_procedure)
-        raise Error.new(false), "No authorization header found" unless authorization(controller.request)
-        validate_digest_response(controller, realm, &password_procedure)
-        true
+        authorization(controller.request) && validate_digest_response(controller.request, realm, &password_procedure)
       end
 
       def authorization(request)
@@ -201,48 +184,60 @@ module ActionController
       end
 
       # Raises error unless the request credentials response value matches the expected value.
-      def validate_digest_response(controller, realm, &password_procedure) 
-        credentials = decode_credentials(controller.request) 
+      # First try the password as a ha1 digest password. If this fails, then try it as a plain
+      # text password.
+      def validate_digest_response(request, realm, &password_procedure)
+        credentials = decode_credentials_header(request)
+        valid_nonce = validate_nonce(request, credentials[:nonce])
 
-        # Check the nonce, opaque and realm.
-        # Ignore nc, as we have no way to validate the number of times this nonce has been used
-        validate_nonce(controller.request, credentials[:nonce])
-        raise Error.new(false, realm, credentials[:realm]), "Realm doesn't match" unless realm == credentials[:realm]
-        raise Error.new(true, opaque(controller.request), credentials[:opaque]),"Opaque doesn't match" unless opaque(controller.request) == credentials[:opaque]
+        if valid_nonce && realm == credentials[:realm] && opaque == credentials[:opaque]
+          password = password_procedure.call(credentials[:username])
 
-        password = password_procedure.call(credentials[:username])
-        raise Error.new(false), "No password" if password.nil?
-        expected = expected_response(controller.request.env['REQUEST_METHOD'], controller.request.url, credentials, password)
-        raise Error.new(false, expected, credentials[:response]), "Invalid response" unless expected == credentials[:response]
-      end 
-
-      # Returns the expected response for a request of +http_method+ to +uri+ with the decoded +credentials+ and the expected +password+ 
-      def expected_response(http_method, uri, credentials, password) 
-        ha1 = ::Digest::MD5.hexdigest([credentials[:username], credentials[:realm], password].join(':')) 
-        ha2 = ::Digest::MD5.hexdigest([http_method.to_s.upcase,uri].join(':')) 
-        ::Digest::MD5.hexdigest([ha1,credentials[:nonce], credentials[:nc], credentials[:cnonce],credentials[:qop],ha2].join(':')) 
-      end  
-
-      def encode_credentials(http_method, credentials, password) 
-        credentials[:response] = expected_response(http_method, credentials[:uri], credentials, password) 
-        "Digest " + credentials.sort_by {|x| x[0].to_s }.inject([]) {|a, v| a << "#{v[0]}='#{v[1]}'" }.join(', ') 
-      end 
-
-      def decode_credentials(request) 
-        authorization(request).to_s.gsub(/^Digest\s+/,'').split(',').inject({}) do |hash, pair| 
-          key, value = pair.split('=', 2) 
-          hash[key.strip.to_sym] = value.to_s.gsub(/^"|"$/,'').gsub(/'/, '') 
-          hash 
-        end 
-      end 
-
-      def authentication_header(controller, realm)
-        controller.headers["WWW-Authenticate"] = %(Digest realm="#{realm}", qop="auth", algorithm=MD5, nonce="#{nonce(controller.request)}", opaque="#{opaque(controller.request)}") 
+         [true, false].any? do |password_is_ha1|
+           expected = expected_response(request.env['REQUEST_METHOD'], request.env['REQUEST_URI'], credentials, password, password_is_ha1)
+           expected == credentials[:response]
+         end
+        end
       end
 
-      def authentication_request(controller, realm, message = "HTTP Digest: Access denied")
+      # Returns the expected response for a request of +http_method+ to +uri+ with the decoded +credentials+ and the expected +password+
+      # Optional parameter +password_is_ha1+ is set to +true+ by default, since best practice is to store ha1 digest instead
+      # of a plain-text password.
+      def expected_response(http_method, uri, credentials, password, password_is_ha1=true)
+        ha1 = password_is_ha1 ? password : ha1(credentials, password)
+        ha2 = ::Digest::MD5.hexdigest([http_method.to_s.upcase, uri].join(':'))
+        ::Digest::MD5.hexdigest([ha1, credentials[:nonce], credentials[:nc], credentials[:cnonce], credentials[:qop], ha2].join(':'))
+      end
+
+      def ha1(credentials, password)
+        ::Digest::MD5.hexdigest([credentials[:username], credentials[:realm], password].join(':'))
+      end
+
+      def encode_credentials(http_method, credentials, password, password_is_ha1)
+        credentials[:response] = expected_response(http_method, credentials[:uri], credentials, password, password_is_ha1)
+        "Digest " + credentials.sort_by {|x| x[0].to_s }.inject([]) {|a, v| a << "#{v[0]}='#{v[1]}'" }.join(', ')
+      end
+
+      def decode_credentials_header(request)
+        decode_credentials(authorization(request))
+      end
+
+      def decode_credentials(header)
+        header.to_s.gsub(/^Digest\s+/,'').split(',').inject({}) do |hash, pair|
+          key, value = pair.split('=', 2)
+          hash[key.strip.to_sym] = value.to_s.gsub(/^"|"$/,'').gsub(/'/, '')
+          hash
+        end
+      end
+
+      def authentication_header(controller, realm)
+        controller.headers["WWW-Authenticate"] = %(Digest realm="#{realm}", qop="auth", algorithm=MD5, nonce="#{nonce}", opaque="#{opaque}")
+      end
+
+      def authentication_request(controller, realm, message = nil)
+        message ||= "HTTP Digest: Access denied.\n"
         authentication_header(controller, realm)
-        controller.send! :render, :text => message, :status => :unauthorized
+        controller.__send__ :render, :text => message, :status => :unauthorized
       end
 
       # Uses an MD5 digest based on time to generate a value to be used only once.
@@ -274,38 +269,36 @@ module ActionController
       # POST or PUT requests and a time-stamp for GET requests. For more details on the issues involved see Section 4
       # of this document.
       #
-      # The nonce is opaque to the client.
-      def nonce(request, time = Time.now)
-        session_id = request.is_a?(String) ? request : request.session.session_id
+      # The nonce is opaque to the client. Composed of Time, and hash of Time with secret
+      # key from the Rails session secret generated upon creation of project. Ensures
+      # the time cannot be modifed by client.
+      def nonce(time = Time.now)
         t = time.to_i
-        hashed = [t, session_id]
+        hashed = [t, secret_key]
         digest = ::Digest::MD5.hexdigest(hashed.join(":"))
         Base64.encode64("#{t}:#{digest}").gsub("\n", '')
       end
 
-      def validate_nonce(request, value)
+      # Might want a shorter timeout depending on whether the request
+      # is a PUT or POST, and if client is browser or web service.
+      # Can be much shorter if the Stale directive is implemented. This would
+      # allow a user to use new nonce without prompting user again for their
+      # username and password.
+      def validate_nonce(request, value, seconds_to_timeout=5*60)
         t = Base64.decode64(value).split(":").first.to_i
-        raise Error.new(true), "Stale Nonce" if (t - Time.now.to_i).abs > 10 * 60
-        n = nonce(request, t)
-        raise Error.new(true, value, n), "Bad Nonce" unless n == value
+        nonce(t) == value && (t - Time.now.to_i).abs <= seconds_to_timeout
       end
 
-      # Opaque based on digest of session_id
-      def opaque(request)
-        session_id = request.is_a?(String) ? request : request.session.session_id
-        @opaque ||= Base64.encode64(::Digest::MD5::hexdigest(session_id)).gsub("\n", '')
-      end
-    end
-
-    class Error < RuntimeError
-      attr_accessor :expected, :was
-      def initialize(fatal = false, expected = nil, was = nil)
-        @fatal = fatal
-        @expected = expected
-        @was = was
+      # Opaque based on random generation - but changing each request?
+      def opaque()
+        ::Digest::MD5.hexdigest(secret_key)
       end
 
-      def fatal?; @fatal; end
+      # Set in /initializers/session_store.rb, and loaded even if sessions are not in use.
+      def secret_key
+        ActionController::Base.session_options[:secret]
+      end
+
     end
   end
 end

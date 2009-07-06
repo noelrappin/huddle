@@ -122,6 +122,29 @@ class TextHelperTest < ActionView::TestCase
     )
   end
 
+  def test_highlight_with_html
+    assert_equal(
+      "<p>This is a <strong class=\"highlight\">beautiful</strong> morning, but also a <strong class=\"highlight\">beautiful</strong> day</p>",
+      highlight("<p>This is a beautiful morning, but also a beautiful day</p>", "beautiful")
+    )
+    assert_equal(
+      "<p>This is a <em><strong class=\"highlight\">beautiful</strong></em> morning, but also a <strong class=\"highlight\">beautiful</strong> day</p>",
+      highlight("<p>This is a <em>beautiful</em> morning, but also a beautiful day</p>", "beautiful")
+    )
+    assert_equal(
+      "<p>This is a <em class=\"error\"><strong class=\"highlight\">beautiful</strong></em> morning, but also a <strong class=\"highlight\">beautiful</strong> <span class=\"last\">day</span></p>",
+      highlight("<p>This is a <em class=\"error\">beautiful</em> morning, but also a beautiful <span class=\"last\">day</span></p>", "beautiful")
+    )
+    assert_equal(
+      "<p class=\"beautiful\">This is a <strong class=\"highlight\">beautiful</strong> morning, but also a <strong class=\"highlight\">beautiful</strong> day</p>",
+      highlight("<p class=\"beautiful\">This is a beautiful morning, but also a beautiful day</p>", "beautiful")
+    )
+    assert_equal(
+      "<p>This is a <strong class=\"highlight\">beautiful</strong> <a href=\"http://example.com/beautiful\#top?what=beautiful%20morning&when=now+then\">morning</a>, but also a <strong class=\"highlight\">beautiful</strong> day</p>",
+      highlight("<p>This is a beautiful <a href=\"http://example.com/beautiful\#top?what=beautiful%20morning&when=now+then\">morning</a>, but also a beautiful day</p>", "beautiful")
+    )
+  end
+
   def test_excerpt
     assert_equal("...is a beautiful morn...", excerpt("This is a beautiful morning", "beautiful", 5))
     assert_equal("This is a...", excerpt("This is a beautiful morning", "this", 5))
@@ -350,6 +373,12 @@ class TextHelperTest < ActionView::TestCase
     link3_result = generate_result(link3_raw)
     assert_equal link3_result, auto_link(link3_raw)
     assert_equal "{link: #{link3_result}}", auto_link("{link: #{link3_raw}}")
+  end
+
+  def test_auto_link_in_tags
+    link_raw    = 'http://www.rubyonrails.org/images/rails.png'
+    link_result = %Q(<img src="#{link_raw}" />)
+    assert_equal link_result, auto_link(link_result)
   end
 
   def test_auto_link_at_eol

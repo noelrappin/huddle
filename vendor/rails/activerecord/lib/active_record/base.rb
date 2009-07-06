@@ -327,7 +327,7 @@ module ActiveRecord #:nodoc:
   #   User.find(user.id).preferences # => { "background" => "black", "display" => large }
   #
   # You can also specify a class option as the second parameter that'll raise an exception if a serialized object is retrieved as a
-  # descendent of a class not in the hierarchy. Example:
+  # descendant of a class not in the hierarchy. Example:
   #
   #   class User < ActiveRecord::Base
   #     serialize :preferences, Hash
@@ -416,7 +416,7 @@ module ActiveRecord #:nodoc:
     end
 
     @@subclasses = {}
-    
+
     ##
     # :singleton-method:
     # Contains the database configuration - as is typically stored in config/database.yml -
@@ -544,8 +544,9 @@ module ActiveRecord #:nodoc:
       # * <tt>:having</tt> - Combined with +:group+ this can be used to filter the records that a <tt>GROUP BY</tt> returns. Uses the <tt>HAVING</tt> SQL-clause.
       # * <tt>:limit</tt> - An integer determining the limit on the number of rows that should be returned.
       # * <tt>:offset</tt> - An integer determining the offset from where the rows should be fetched. So at 5, it would skip rows 0 through 4.
-      # * <tt>:joins</tt> - Either an SQL fragment for additional joins like "LEFT JOIN comments ON comments.post_id = id" (rarely needed)
-      #   or named associations in the same form used for the <tt>:include</tt> option, which will perform an <tt>INNER JOIN</tt> on the associated table(s).
+      # * <tt>:joins</tt> - Either an SQL fragment for additional joins like "LEFT JOIN comments ON comments.post_id = id" (rarely needed),
+      #   named associations in the same form used for the <tt>:include</tt> option, which will perform an <tt>INNER JOIN</tt> on the associated table(s),
+      #   or an array containing a mixture of both strings and named associations.
       #   If the value is a string, then the records will be returned read-only since they will have attributes that do not correspond to the table's columns.
       #   Pass <tt>:readonly => false</tt> to override.
       # * <tt>:include</tt> - Names associations that should be loaded alongside. The symbols named refer
@@ -660,9 +661,8 @@ module ActiveRecord #:nodoc:
         connection.select_all(sanitize_sql(sql), "#{name} Load").collect! { |record| instantiate(record) }
       end
 
-
       # Returns true if a record exists in the table that matches the +id+ or
-      # conditions given, or false otherwise. The argument can take four forms:
+      # conditions given, or false otherwise. The argument can take five forms:
       #
       # * Integer - Finds the record with this primary key.
       # * String - Finds the record with a primary key corresponding to this
@@ -671,6 +671,7 @@ module ActiveRecord #:nodoc:
       #   (such as <tt>['color = ?', 'red']</tt>).
       # * Hash - Finds the record that matches these +find+-style conditions
       #   (such as <tt>{:color => 'red'}</tt>).
+      # * No args - Returns false if the table is empty, true otherwise.
       #
       # For more information about specifying conditions as a Hash or Array,
       # see the Conditions section in the introduction to ActiveRecord::Base.
@@ -684,7 +685,8 @@ module ActiveRecord #:nodoc:
       #   Person.exists?('5')
       #   Person.exists?(:name => "David")
       #   Person.exists?(['name LIKE ?', "%#{query}%"])
-      def exists?(id_or_conditions)
+      #   Person.exists?
+      def exists?(id_or_conditions = {})
         connection.select_all(
           construct_finder_sql(
             :select     => "#{quoted_table_name}.#{primary_key}",
@@ -734,12 +736,12 @@ module ActiveRecord #:nodoc:
       # ==== Parameters
       #
       # * +id+ - This should be the id or an array of ids to be updated.
-      # * +attributes+ - This should be a Hash of attributes to be set on the object, or an array of Hashes.
+      # * +attributes+ - This should be a hash of attributes to be set on the object, or an array of hashes.
       #
       # ==== Examples
       #
       #   # Updating one record:
-      #   Person.update(15, { :user_name => 'Samuel', :group => 'expert' })
+      #   Person.update(15, :user_name => 'Samuel', :group => 'expert')
       #
       #   # Updating multiple records:
       #   people = { 1 => { "first_name" => "David" }, 2 => { "first_name" => "Jeremy" } }
@@ -755,25 +757,26 @@ module ActiveRecord #:nodoc:
         end
       end
 
-      # Delete an object (or multiple objects) where the +id+ given matches the primary_key.  A SQL +DELETE+ command
-      # is executed on the database which means that no callbacks are fired off running this.  This is an efficient method
-      # of deleting records that don't need cleaning up after or other actions to be taken.
+      # Deletes the row with a primary key matching the +id+ argument, using a
+      # SQL +DELETE+ statement, and returns the number of rows deleted. Active
+      # Record objects are not instantiated, so the object's callbacks are not
+      # executed, including any <tt>:dependent</tt> association options or
+      # Observer methods.
       #
-      # Objects are _not_ instantiated with this method, and so +:dependent+ rules
-      # defined on associations are not honered.
+      # You can delete multiple rows at once by passing an Array of <tt>id</tt>s.
       #
-      # ==== Parameters
-      #
-      # * +id+ - Can be either an Integer or an Array of Integers.
+      # Note: Although it is often much faster than the alternative,
+      # <tt>#destroy</tt>, skipping callbacks might bypass business logic in
+      # your application that ensures referential integrity or performs other
+      # essential jobs.
       #
       # ==== Examples
       #
-      #   # Delete a single object
+      #   # Delete a single row
       #   Todo.delete(1)
       #
-      #   # Delete multiple objects
-      #   todos = [1,2,3]
-      #   Todo.delete(todos)
+      #   # Delete multiple rows
+      #   Todo.delete([2,3,4])
       def delete(id)
         delete_all([ "#{connection.quote_column_name(primary_key)} IN (?)", id ])
       end
@@ -849,25 +852,32 @@ module ActiveRecord #:nodoc:
         connection.update(sql, "#{name} Update")
       end
 
-      # Destroys the records matching +conditions+ by instantiating each record and calling their +destroy+ method.
-      # This means at least 2*N database queries to destroy N records, so avoid +destroy_all+ if you are deleting
-      # many records. If you want to simply delete records without worrying about dependent associations or
-      # callbacks, use the much faster +delete_all+ method instead.
+      # Destroys the records matching +conditions+ by instantiating each
+      # record and calling its +destroy+ method. Each object's callbacks are
+      # executed (including <tt>:dependent</tt> association options and
+      # +before_destroy+/+after_destroy+ Observer methods). Returns the
+      # collection of objects that were destroyed; each will be frozen, to
+      # reflect that no changes should be made (since they can't be
+      # persisted).
+      #
+      # Note: Instantiation, callback execution, and deletion of each
+      # record can be time consuming when you're removing many records at
+      # once. It generates at least one SQL +DELETE+ query per record (or
+      # possibly more, to enforce your callbacks). If you want to delete many
+      # rows quickly, without concern for their associations or callbacks, use
+      # +delete_all+ instead.
       #
       # ==== Parameters
       #
-      # * +conditions+ - Conditions are specified the same way as with +find+ method.
+      # * +conditions+ - A string, array, or hash that specifies which records
+      #   to destroy. If omitted, all records are destroyed. See the
+      #   Conditions section in the introduction to ActiveRecord::Base for
+      #   more information.
       #
-      # ==== Example
+      # ==== Examples
       #
       #   Person.destroy_all("last_login < '2004-04-04'")
-      #
-      # This loads and destroys each person one by one, including its dependent associations and before_ and
-      # after_destroy callbacks.
-      #
-      # +conditions+ can be anything that +find+ also accepts:
-      #
-      #   Person.destroy_all(:last_login => 6.hours.ago)
+      #   Person.destroy_all(:status => "inactive")
       def destroy_all(conditions = nil)
         find(:all, :conditions => conditions).each { |object| object.destroy }
       end
@@ -875,7 +885,8 @@ module ActiveRecord #:nodoc:
       # Deletes the records matching +conditions+ without instantiating the records first, and hence not
       # calling the +destroy+ method nor invoking callbacks. This is a single SQL DELETE statement that
       # goes straight to the database, much more efficient than +destroy_all+. Be careful with relations
-      # though, in particular <tt>:dependent</tt> rules defined on associations are not honored.
+      # though, in particular <tt>:dependent</tt> rules defined on associations are not honored.  Returns
+      # the number of rows affected.
       #
       # ==== Parameters
       #
@@ -918,7 +929,7 @@ module ActiveRecord #:nodoc:
       #
       # ==== Parameters
       #
-      # * +id+ - The id of the object you wish to update a counter on.
+      # * +id+ - The id of the object you wish to update a counter on or an Array of ids.
       # * +counters+ - An Array of Hashes containing the names of the fields
       #   to update as keys and the amount to update the field by as values.
       #
@@ -932,12 +943,27 @@ module ActiveRecord #:nodoc:
       #   #    SET comment_count = comment_count - 1,
       #   #        action_count = action_count + 1
       #   #  WHERE id = 5
+      #
+      #   # For the Posts with id of 10 and 15, increment the comment_count by 1
+      #   Post.update_counters [10, 15], :comment_count => 1
+      #   # Executes the following SQL:
+      #   # UPDATE posts
+      #   #    SET comment_count = comment_count + 1,
+      #   #  WHERE id IN (10, 15)
       def update_counters(id, counters)
         updates = counters.inject([]) { |list, (counter_name, increment)|
           sign = increment < 0 ? "-" : "+"
           list << "#{connection.quote_column_name(counter_name)} = COALESCE(#{connection.quote_column_name(counter_name)}, 0) #{sign} #{increment.abs}"
         }.join(", ")
-        update_all(updates, "#{connection.quote_column_name(primary_key)} = #{quote_value(id)}")
+
+        if id.is_a?(Array)
+          ids_list = id.map {|i| quote_value(i)}.join(', ')
+          condition = "IN  (#{ids_list})"
+        else
+          condition = "= #{quote_value(id)}"
+        end
+
+        update_all(updates, "#{connection.quote_column_name(primary_key)} #{condition}")
       end
 
       # Increment a number field by one, usually representing a count.
@@ -975,7 +1001,6 @@ module ActiveRecord #:nodoc:
       def decrement_counter(counter_name, id)
         update_counters(id, counter_name => -1)
       end
-
 
       # Attributes named in this macro are protected from mass-assignment,
       # such as <tt>new(attributes)</tt>,
@@ -1076,7 +1101,6 @@ module ActiveRecord #:nodoc:
       def serialized_attributes
         read_inheritable_attribute(:attr_serialized) or write_inheritable_attribute(:attr_serialized, {})
       end
-
 
       # Guesses the table name (in forced lower-case) based on the name of the class in the inheritance hierarchy descending
       # directly from ActiveRecord::Base. So if the hierarchy looks like: Reply < Message < ActiveRecord::Base, then Message is used
@@ -1320,7 +1344,7 @@ module ActiveRecord #:nodoc:
         subclasses.each { |klass| klass.reset_inheritable_attributes; klass.reset_column_information }
       end
 
-      def self_and_descendents_from_active_record#nodoc:
+      def self_and_descendants_from_active_record#nodoc:
         klass = self
         classes = [klass]
         while klass != klass.base_class  
@@ -1340,7 +1364,7 @@ module ActiveRecord #:nodoc:
       # module now.
       # Specify +options+ with additional translating options.
       def human_attribute_name(attribute_key_name, options = {})
-        defaults = self_and_descendents_from_active_record.map do |klass|
+        defaults = self_and_descendants_from_active_record.map do |klass|
           :"#{klass.name.underscore}.#{attribute_key_name}"
         end
         defaults << options[:default] if options[:default]
@@ -1355,7 +1379,7 @@ module ActiveRecord #:nodoc:
       # Default scope of the translation is activerecord.models
       # Specify +options+ with additional translating options.
       def human_name(options = {})
-        defaults = self_and_descendents_from_active_record.map do |klass|
+        defaults = self_and_descendants_from_active_record.map do |klass|
           :"#{klass.name.underscore}"
         end 
         defaults << self.name.humanize
@@ -1389,7 +1413,6 @@ module ActiveRecord #:nodoc:
           "#{super}(Table doesn't exist)"
         end
       end
-
 
       def quote_value(value, column = nil) #:nodoc:
         connection.quote(value,column)
@@ -1459,7 +1482,7 @@ module ActiveRecord #:nodoc:
         elsif match = DynamicScopeMatch.match(method_id)
           return true if all_attributes_exists?(match.attribute_names)
         end
-        
+
         super
       end
 
@@ -1510,7 +1533,7 @@ module ActiveRecord #:nodoc:
         end
 
         def reverse_sql_order(order_query)
-          reversed_query = order_query.split(/,/).each { |s|
+          reversed_query = order_query.to_s.split(/,/).each { |s|
             if s.match(/\s(asc|ASC)$/)
               s.gsub!(/\s(asc|ASC)$/, ' DESC')
             elsif s.match(/\s(desc|DESC)$/)
@@ -1663,7 +1686,7 @@ module ActiveRecord #:nodoc:
         def construct_finder_sql(options)
           scope = scope(:find)
           sql  = "SELECT #{options[:select] || (scope && scope[:select]) || default_select(options[:joins] || (scope && scope[:joins]))} "
-          sql << "FROM #{(scope && scope[:from]) || options[:from] || quoted_table_name} "
+          sql << "FROM #{options[:from]  || (scope && scope[:from]) || quoted_table_name} "
 
           add_joins!(sql, options[:joins], scope)
           add_conditions!(sql, options[:conditions], scope)
@@ -1691,7 +1714,7 @@ module ActiveRecord #:nodoc:
               end
               join
             end
-            joins.flatten.uniq
+            joins.flatten.map{|j| j.strip}.uniq
           else
             joins.collect{|j| safe_to_array(j)}.flatten.uniq
           end
@@ -1718,7 +1741,9 @@ module ActiveRecord #:nodoc:
           scoped_order = scope[:order] if scope
           if order
             sql << " ORDER BY #{order}"
-            sql << ", #{scoped_order}" if scoped_order
+            if scoped_order && scoped_order != order
+              sql << ", #{scoped_order}"
+            end
           else
             sql << " ORDER BY #{scoped_order}" if scoped_order
           end
@@ -1727,12 +1752,12 @@ module ActiveRecord #:nodoc:
         def add_group!(sql, group, having, scope = :auto)
           if group
             sql << " GROUP BY #{group}"
-            sql << " HAVING #{having}" if having
+            sql << " HAVING #{sanitize_sql_for_conditions(having)}" if having
           else
             scope = scope(:find) if :auto == scope
             if scope && (scoped_group = scope[:group])
               sql << " GROUP BY #{scoped_group}"
-              sql << " HAVING #{scoped_having}" if (scoped_having = scope[:having])
+              sql << " HAVING #{sanitize_sql_for_conditions(scope[:having])}" if scope[:having]
             end
           end
         end
@@ -1802,15 +1827,13 @@ module ActiveRecord #:nodoc:
           table_name
         end
 
-        # Enables dynamic finders like find_by_user_name(user_name) and find_by_user_name_and_password(user_name, password) that are turned into
-        # find(:first, :conditions => ["user_name = ?", user_name]) and  find(:first, :conditions => ["user_name = ? AND password = ?", user_name, password])
-        # respectively. Also works for find(:all) by using find_all_by_amount(50) that is turned into find(:all, :conditions => ["amount = ?", 50]).
+        # Enables dynamic finders like <tt>find_by_user_name(user_name)</tt> and <tt>find_by_user_name_and_password(user_name, password)</tt>
+        # that are turned into <tt>find(:first, :conditions => ["user_name = ?", user_name])</tt> and
+        # <tt>find(:first, :conditions => ["user_name = ? AND password = ?", user_name, password])</tt> respectively. Also works for
+        # <tt>find(:all)</tt> by using <tt>find_all_by_amount(50)</tt> that is turned into <tt>find(:all, :conditions => ["amount = ?", 50])</tt>.
         #
-        # It's even possible to use all the additional parameters to find. For example, the full interface for find_all_by_amount
-        # is actually find_all_by_amount(amount, options).
-        #
-        # This also enables you to initialize a record if it is not found, such as find_or_initialize_by_amount(amount)
-        # or find_or_create_by_user_and_password(user, password).
+        # It's even possible to use all the additional parameters to +find+. For example, the full interface for +find_all_by_amount+
+        # is actually <tt>find_all_by_amount(amount, options)</tt>.
         #
         # Also enables dynamic scopes like scoped_by_user_name(user_name) and scoped_by_user_name_and_password(user_name, password) that
         # are turned into scoped(:conditions => ["user_name = ?", user_name]) and scoped(:conditions => ["user_name = ? AND password = ?", user_name, password])
@@ -1968,12 +1991,16 @@ module ActiveRecord #:nodoc:
           attribute_names.all? { |name| column_methods_hash.include?(name.to_sym) }
         end
 
-        def attribute_condition(argument)
+        def attribute_condition(quoted_column_name, argument)
           case argument
-            when nil   then "IS ?"
-            when Array, ActiveRecord::Associations::AssociationCollection, ActiveRecord::NamedScope::Scope then "IN (?)"
-            when Range then "BETWEEN ? AND ?"
-            else            "= ?"
+            when nil   then "#{quoted_column_name} IS ?"
+            when Array, ActiveRecord::Associations::AssociationCollection, ActiveRecord::NamedScope::Scope then "#{quoted_column_name} IN (?)"
+            when Range then if argument.exclude_end?
+                              "#{quoted_column_name} >= ? AND #{quoted_column_name} < ?"
+                            else
+                              "#{quoted_column_name} BETWEEN ? AND ?"
+                            end
+            else            "#{quoted_column_name} = ?"
           end
         end
 
@@ -1984,7 +2011,6 @@ module ActiveRecord #:nodoc:
             else sanitize_sql(primary_key => id_or_conditions)
           end
         end
-
 
         # Defines an "attribute" method (like +inheritance_column+ or
         # +table_name+). A new (class) method will be created with the
@@ -2032,7 +2058,11 @@ module ActiveRecord #:nodoc:
         #   end
         #
         # In nested scopings, all previous parameters are overwritten by the innermost rule, with the exception of
-        # <tt>:conditions</tt> and <tt>:include</tt> options in <tt>:find</tt>, which are merged.
+        # <tt>:conditions</tt>, <tt>:include</tt>, and <tt>:joins</tt> options in <tt>:find</tt>, which are merged.
+        #
+        # <tt>:joins</tt> options are uniqued so multiple scopes can join in the same table without table aliasing
+        # problems.  If you need to join multiple tables, but still want one of the tables to be uniqued, use the
+        # array of strings format for your joins.
         #
         #   class Article < ActiveRecord::Base
         #     def self.find_with_scope
@@ -2078,7 +2108,7 @@ module ActiveRecord #:nodoc:
           end
 
           # Merge scopings
-          if action == :merge && current_scoped_methods
+          if [:merge, :reverse_merge].include?(action) && current_scoped_methods
             method_scoping = current_scoped_methods.inject(method_scoping) do |hash, (method, params)|
               case hash[method]
                 when Hash
@@ -2086,7 +2116,11 @@ module ActiveRecord #:nodoc:
                     (hash[method].keys + params.keys).uniq.each do |key|
                       merge = hash[method][key] && params[key] # merge if both scopes have the same key
                       if key == :conditions && merge
-                        hash[method][key] = merge_conditions(params[key], hash[method][key])
+                        if params[key].is_a?(Hash) && hash[method][key].is_a?(Hash)
+                          hash[method][key] = merge_conditions(hash[method][key].deep_merge(params[key]))
+                        else
+                          hash[method][key] = merge_conditions(params[key], hash[method][key])
+                        end
                       elsif key == :include && merge
                         hash[method][key] = merge_includes(hash[method][key], params[key]).uniq
                       elsif key == :joins && merge
@@ -2096,7 +2130,11 @@ module ActiveRecord #:nodoc:
                       end
                     end
                   else
-                    hash[method] = params.merge(hash[method])
+                    if action == :reverse_merge
+                      hash[method] = hash[method].merge(params)
+                    else
+                      hash[method] = params.merge(hash[method])
+                    end
                   end
                 else
                   hash[method] = params
@@ -2106,7 +2144,6 @@ module ActiveRecord #:nodoc:
           end
 
           self.scoped_methods << method_scoping
-
           begin
             yield
           ensure
@@ -2137,7 +2174,7 @@ module ActiveRecord #:nodoc:
         # Test whether the given method and optional key are scoped.
         def scoped?(method, key = nil) #:nodoc:
           if current_scoped_methods && (scope = current_scoped_methods[method])
-            !key || scope.has_key?(key)
+            !key || !scope[key].nil?
           end
         end
 
@@ -2156,7 +2193,7 @@ module ActiveRecord #:nodoc:
           scoped_methods.last
         end
 
-        # Returns the class type of the record using the current module as a prefix. So descendents of
+        # Returns the class type of the record using the current module as a prefix. So descendants of
         # MyApp::Business::Account would appear as MyApp::Business::AccountSubclass.
         def compute_type(type_name)
           modularized_name = type_name_with_module(type_name)
@@ -2169,7 +2206,8 @@ module ActiveRecord #:nodoc:
           end
         end
 
-        # Returns the class descending directly from Active Record in the inheritance hierarchy.
+        # Returns the class descending directly from ActiveRecord::Base or an
+        # abstract class, if any, in the inheritance hierarchy.
         def class_of_active_record_descendant(klass)
           if klass.superclass == Base || klass.superclass.abstract_class?
             klass
@@ -2274,7 +2312,7 @@ module ActiveRecord #:nodoc:
                 table_name = connection.quote_table_name(table_name)
               end
 
-              "#{table_name}.#{connection.quote_column_name(attr)} #{attribute_condition(value)}"
+              attribute_condition("#{table_name}.#{connection.quote_column_name(attr)}", value)
             else
               sanitize_sql_hash_for_conditions(value, connection.quote_table_name(attr.to_s))
             end
@@ -2518,14 +2556,16 @@ module ActiveRecord #:nodoc:
         create_or_update || raise(RecordNotSaved)
       end
 
-      # Deletes the record in the database and freezes this instance to reflect that no changes should
-      # be made (since they can't be persisted).
+      # Deletes the record in the database and freezes this instance to
+      # reflect that no changes should be made (since they can't be
+      # persisted). Returns the frozen instance.
       #
-      # Unlike #destroy, this method doesn't run any +before_delete+ and +after_delete+
-      # callbacks, nor will it enforce any association +:dependent+ rules.
-      # 
-      # In addition to deleting this record, any defined +before_delete+ and +after_delete+
-      # callbacks are run, and +:dependent+ rules defined on associations are run.
+      # The row is simply removed with a SQL +DELETE+ statement on the
+      # record's primary key, and no callbacks are executed.
+      #
+      # To enforce the object's +before_destroy+ and +after_destroy+
+      # callbacks, Observer methods, or any <tt>:dependent</tt> association
+      # options, use <tt>#destroy</tt>.
       def delete
         self.class.delete(id) unless new_record?
         freeze
@@ -2709,7 +2749,6 @@ module ActiveRecord #:nodoc:
         assign_multiparameter_attributes(multi_parameter_attributes)
       end
 
-
       # Returns a hash of all the attributes with their names as keys and the values of the attributes as values.
       def attributes
         self.attribute_names.inject({}) do |attrs, name|
@@ -2726,7 +2765,19 @@ module ActiveRecord #:nodoc:
         end
       end
 
-      # Format attributes nicely for inspect.
+      # Returns an <tt>#inspect</tt>-like string for the value of the
+      # attribute +attr_name+. String attributes are elided after 50
+      # characters, and Date and Time attributes are returned in the
+      # <tt>:db</tt> format. Other attributes return the value of
+      # <tt>#inspect</tt> without modification.
+      #
+      #   person = Person.create!(:name => "David Heinemeier Hansson " * 3)
+      #
+      #   person.attribute_for_inspect(:name)
+      #   # => '"David Heinemeier Hansson David Heinemeier Hansson D..."'
+      #
+      #   person.attribute_for_inspect(:created_at)
+      #   # => '"2009-01-12 04:48:57"'
       def attribute_for_inspect(attr_name)
         value = read_attribute(attr_name)
 
@@ -2855,7 +2906,7 @@ module ActiveRecord #:nodoc:
         id
       end
 
-      # Sets the attribute used for single table inheritance to this class name if this is not the ActiveRecord::Base descendent.
+      # Sets the attribute used for single table inheritance to this class name if this is not the ActiveRecord::Base descendant.
       # Considering the hierarchy Reply < Message < ActiveRecord::Base, this makes it possible to do Reply.new without having to
       # set <tt>Reply[Reply.inheritance_column] = "Reply"</tt> yourself. No such attribute would be set for objects of the
       # Message class in that example.
@@ -3091,7 +3142,12 @@ module ActiveRecord #:nodoc:
     include Dirty
     include Callbacks, Observing, Timestamp
     include Associations, AssociationPreload, NamedScope
-    include Aggregations, Transactions, Reflection, Calculations, Serialization
+
+    # AutosaveAssociation needs to be included before Transactions, because we want
+    # #save_with_autosave_associations to be wrapped inside a transaction.
+    include AutosaveAssociation, NestedAttributes
+
+    include Aggregations, Transactions, Reflection, Batches, Calculations, Serialization
   end
 end
 

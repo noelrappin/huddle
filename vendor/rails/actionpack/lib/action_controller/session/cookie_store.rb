@@ -45,7 +45,7 @@ module ActionController
         :domain       => nil,
         :path         => "/",
         :expire_after => nil,
-        :httponly     => false
+        :httponly     => true
       }.freeze
 
       ENV_SESSION_KEY = "rack.session".freeze
@@ -56,8 +56,6 @@ module ActionController
       class CookieOverflow < StandardError; end
 
       def initialize(app, options = {})
-        options = options.dup
-
         # Process legacy CGI options
         options = options.symbolize_keys
         if options.has_key?(:session_path)
@@ -90,17 +88,19 @@ module ActionController
 
       def call(env)
         env[ENV_SESSION_KEY] = AbstractStore::SessionHash.new(self, env)
-        env[ENV_SESSION_OPTIONS_KEY] = @default_options
+        env[ENV_SESSION_OPTIONS_KEY] = @default_options.dup
 
         status, headers, body = @app.call(env)
 
         session_data = env[ENV_SESSION_KEY]
-        if !session_data.is_a?(AbstractStore::SessionHash) || session_data.send(:loaded?)
+        options = env[ENV_SESSION_OPTIONS_KEY]
+
+        if !session_data.is_a?(AbstractStore::SessionHash) || session_data.send(:loaded?) || options[:expire_after]
+          session_data.send(:load!) if session_data.is_a?(AbstractStore::SessionHash) && !session_data.send(:loaded?)
           session_data = marshal(session_data.to_hash)
 
           raise CookieOverflow if session_data.size > MAX
 
-          options = env[ENV_SESSION_OPTIONS_KEY]
           cookie = Hash.new
           cookie[:value] = session_data
           unless options[:expire_after].nil?
@@ -108,12 +108,9 @@ module ActionController
           end
 
           cookie = build_cookie(@key, cookie.merge(options))
-          case headers[HTTP_SET_COOKIE]
-          when Array
-            headers[HTTP_SET_COOKIE] << cookie
-          when String
-            headers[HTTP_SET_COOKIE] = [headers[HTTP_SET_COOKIE], cookie]
-          when nil
+          unless headers[HTTP_SET_COOKIE].blank?
+            headers[HTTP_SET_COOKIE] << "\n#{cookie}"
+          else
             headers[HTTP_SET_COOKIE] = cookie
           end
         end
@@ -133,7 +130,7 @@ module ActionController
             expires = "; expires=" + value[:expires].clone.gmtime.
               strftime("%a, %d-%b-%Y %H:%M:%S GMT") if value[:expires]
             secure = "; secure" if value[:secure]
-            httponly = "; httponly" if value[:httponly]
+            httponly = "; HttpOnly" if value[:httponly]
             value = value[:value]
           end
           value = [value] unless Array === value
@@ -163,9 +160,9 @@ module ActionController
 
         def ensure_session_key(key)
           if key.blank?
-            raise ArgumentError, 'A session_key is required to write a ' +
+            raise ArgumentError, 'A key is required to write a ' +
               'cookie containing the session data. Use ' +
-              'config.action_controller.session = { :session_key => ' +
+              'config.action_controller.session = { :key => ' +
               '"_myapp_session", :secret => "some secret phrase" } in ' +
               'config/environment.rb'
           end
@@ -181,7 +178,7 @@ module ActionController
           if secret.blank?
             raise ArgumentError, "A secret is required to generate an " +
               "integrity hash for cookie session data. Use " +
-              "config.action_controller.session = { :session_key => " +
+              "config.action_controller.session = { :key => " +
               "\"_myapp_session\", :secret => \"some secret phrase of at " +
               "least #{SECRET_MIN_LENGTH} characters\" } " +
               "in config/environment.rb"
