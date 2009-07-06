@@ -4,3 +4,4 @@ tmp/*
 .DS_Store
 .rake_tasks~
 db/*.sqlite3
+db/test.sqlite3
