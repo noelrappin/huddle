@@ -7,7 +7,7 @@
 <% end -%>
   </tr>
 
-<%% @<%= plural_name %>.each do |<%= singular_name %>| %>
+<%% for <%= singular_name %> in @<%= plural_name %> %>
   <tr>
 <% for attribute in attributes -%>
     <td><%%=h <%= singular_name %>.<%= attribute.name %> %></td>
